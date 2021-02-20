@@ -15,7 +15,7 @@ int main() {
 
     //Initialize counter for each thread
     std::size_t const os_threads = hpx::get_os_thread_count();
-    std::vector<hpx::performance_counters::performance_counter> counters(n);
+    std::vector<hpx::performance_counters::performance_counter> counters(os_threads);
     for (int i = 0; i < os_threads; i++) {
         counters[i] = hpx::performance_counters::performance_counter("/papi{locality#0/worker-thread#" + std::to_string(i) + "}/PAPI_L1_TCM");
         counters[i].start();
