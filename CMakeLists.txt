@@ -11,3 +11,8 @@ add_hpx_executable(ex1-threads
     SOURCES ex1-threads.cpp
     COMPONENT_DEPENDENCIES iostreams)
 
+
+add_hpx_executable(ex2-papi
+    SOURCES ex2-papi.cpp
+    COMPONENT_DEPENDENCIES iostreams)
+
