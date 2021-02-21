@@ -19,3 +19,7 @@ add_hpx_executable(ex2-papi
 add_hpx_executable(ex3-set
     SOURCES ex3-set.cpp
     COMPONENT_DEPENDENCIES iostreams)
+
+add_hpx_executable(ex4-simple_counter
+    SOURCES ex4-simple_counter.cpp
+    COMPONENT_DEPENDENCIES iostreams)
