@@ -9,3 +9,4 @@
 * Objetivos em progresso:
   * Definir um contador completo:
     * Estudar e aprender a definir componentes
+    * Estudar templates e Curiously Recurring Template Pattern do C++
