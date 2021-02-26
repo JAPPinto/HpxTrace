@@ -8,7 +8,7 @@
 //as it is a component, it needs to inherit from hpx::components::component_base
 
 namespace server{
-	class testComponent : public hpx::components::locking_hook< hpx::components::component_base<testComponent> >{
+	class test : public hpx::components::locking_hook< hpx::components::component_base<test> >{
 
 		private:
 			std::string content = "";
@@ -26,11 +26,11 @@ namespace server{
 			// Each of the exposed functions needs to be encapsulated into an
 	        // action type, generating all required boilerplate code for threads,
 	        // serialization, etc.
-			HPX_DEFINE_COMPONENT_ACTION(testComponent, store);
-			HPX_DEFINE_COMPONENT_ACTION(testComponent, get);
-	}
+			HPX_DEFINE_COMPONENT_ACTION(test, store);
+			HPX_DEFINE_COMPONENT_ACTION(test, get);
+	};
 }
 
 //Declare the necessary component action boilerplate code
-HPX_REGISTER_ACTION_DECLARATION( server::testComponent::store_action, testComponent_store_action);
-HPX_REGISTER_ACTION_DECLARATION( server::testComponent::get_action, testComponent_get_action);
+HPX_REGISTER_ACTION_DECLARATION( server::test::store_action, test_store_action);
+HPX_REGISTER_ACTION_DECLARATION( server::test::get_action, test_get_action);
