@@ -4,15 +4,150 @@
 
 #include <cstdint>
 
+#include "server/example.hpp"
+
+
+
 
 // Add factory registration functionality, We register the module dynamically
 // as no executable links against it.
 HPX_REGISTER_COMPONENT_MODULE_DYNAMIC();
 
-
+typedef hpx::components::component<
+    ::performance_counters::example::server::example_counter
+> example_counter_type;
 
 namespace performance_counters { namespace example
 {
+
+
+    // The purpose of this function is to invoke the supplied function f for all
+    // allowed counter instance names supported by the counter type this
+    // function has been registered with.
+    bool explicit_example_counter_discoverer(
+        hpx::performance_counters::counter_info const& info,
+        //f is called for each discovered performance counter instance
+        hpx::performance_counters::discover_counter_func const& f, 
+        hpx::performance_counters::discover_counters_mode mode, 
+        hpx::error_code& ec
+        ) {
+
+        hpx::performance_counters::counter_info i = info;
+
+
+
+    	// compose the counter name templates
+
+    	//A counter_path_elements holds the elements of a full name for a counter instance.
+    	///objectname{parentinstancename::parentindex/instancename#instanceindex}/countername#parameters
+        hpx::performance_counters::counter_path_elements p;
+
+        //Fill the given counter_path_elements instance from the given full name of a counter. 
+        hpx::performance_counters::counter_status status =
+            get_counter_path_elements(info.fullname_, p, ec);
+
+        //invalid counter name
+        if (!status_is_valid(status)) return false;
+
+        //discover_counters_mode = discover_counters_minimal oir discover_counters_full
+        if (mode == hpx::performance_counters::discover_counters_minimal ||
+            p.parentinstancename_.empty() || p.instancename_.empty())
+        {
+            if (p.parentinstancename_.empty())
+            {
+                p.parentinstancename_ = "locality#*";
+                p.parentinstanceindex_ = -1;
+            }
+
+            if (p.instancename_.empty())
+            {
+                p.instancename_ = "instance#*";
+                p.instanceindex_ = -1;
+            }
+
+            status = get_counter_name(p, i.fullname_, ec);
+            if (!status_is_valid(status) || !f(i, ec) || ec)
+                return false;
+        }
+
+        else if(p.instancename_ == "instance#*") {
+            HPX_ASSERT(mode == hpx::performance_counters::discover_counters_full);
+
+            // FIXME: expand for all instances
+            p.instancename_ = "instance";
+            p.instanceindex_ = 0;
+            status = get_counter_name(p, i.fullname_, ec);
+            if (!status_is_valid(status) || !f(i, ec) || ec)
+                return false;
+        }
+        else if (!f(i, ec) || ec) {
+            return false;
+        }
+
+        if (&ec != &hpx::throws)
+            ec = hpx::make_success_code();
+
+        return true;    // everything is ok
+    }
+
+	///////////////////////////////////////////////////////////////////////////
+    // Creation function for explicit example performance counter. It's purpose is
+    // to create and register a new instance of the given name (or reuse an
+    // existing instance).
+    hpx::naming::gid_type explicit_example_counter_creator(
+        hpx::performance_counters::counter_info const& info, hpx::error_code& ec)
+    {
+        // verify the validity of the counter instance name
+        hpx::performance_counters::counter_path_elements paths;
+        get_counter_path_elements(info.fullname_, paths, ec);
+        if (ec) return hpx::naming::invalid_gid;
+
+        if (paths.parentinstance_is_basename_) {
+            HPX_THROWS_IF(ec, hpx::bad_parameter,
+                "example::explicit_example_counter_creator",
+                "invalid counter instance parent name: " +
+                    paths.parentinstancename_);
+            return hpx::naming::invalid_gid;
+        }
+
+        // create individual counter
+        if (paths.instancename_ == "instance" && paths.instanceindex_ != -1) {
+            // make sure parent instance name is set properly
+            hpx::performance_counters::counter_info complemented_info = info;
+            complement_counter_info(complemented_info, info, ec);
+            if (ec) return hpx::naming::invalid_gid;
+
+            // create the counter as requested
+            hpx::naming::gid_type id;
+            try {
+                // create the 'example' performance counter component locally, we
+                // only get here if this instance does not exist yet
+                id = hpx::components::server::construct<example_counter_type>(
+                        complemented_info);
+            }
+            catch (hpx::exception const& e) {
+                if (&ec == &hpx::throws)
+                    throw;
+                ec = make_error_code(e.get_error(), e.what());
+                return hpx::naming::invalid_gid;
+            }
+
+            if (&ec != &hpx::throws)
+                ec = hpx::make_success_code();
+            return id;
+        }
+
+        HPX_THROWS_IF(ec, hpx::bad_parameter,
+            "example::explicit_example_counter_creator",
+            "invalid counter instance name: " + paths.instancename_);
+        return hpx::naming::invalid_gid;
+    }
+
+
+
+
+
+
     // This function will be invoked whenever the implicit counter is queried.
     std::int64_t immediate_example(bool reset)
     {
@@ -42,9 +177,23 @@ namespace performance_counters { namespace example
             counter_raw,                   //type - shows the last observed value 
             "returns ... (implicit version, using HPX facilities)", //help text
             // function which will be called to create a new instance of this counter type
+            //!!!Verificar melhor o que isto faz
             hpx::util::bind(&hpx::performance_counters::locality_raw_counter_creator, _1, &immediate_example, _2), 
             //The function will be called to discover counter instances which can be created.
             &hpx::performance_counters::locality_counter_discoverer, 
+            HPX_PERFORMANCE_COUNTER_V1, //version
+            "" //unit of measure 
+            );
+
+
+        install_counter_type(
+            "/example/immediate/explicit", //name
+            counter_raw,                   //type - shows the last observed value 
+            "returns ... (explicit version)", //help text
+            // function which will be called to create a new instance of this counter type
+            &explicit_example_counter_creator, 
+            //The function will be called to discover counter instances which can be created.
+            &explicit_example_counter_discoverer, 
             HPX_PERFORMANCE_COUNTER_V1, //version
             "" //unit of measure 
             );
@@ -62,6 +211,12 @@ namespace performance_counters { namespace example
         pre_startup = true;       // run 'startup' as pre-startup function
         return true;
     }
+
+
+
+
+
+
 }}
 
 // Register a startup function which will be called as a HPX-thread during

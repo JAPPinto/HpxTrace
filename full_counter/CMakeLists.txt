@@ -21,7 +21,6 @@ set(root "${PROJECT_SOURCE_DIR}")
 # add component
 add_hpx_component(
   example INTERNAL_FLAGS NOEXPORT
-  #FOLDER "Examples/PerformanceCounters/example"
   HEADER_GLOB "${root}/*.h*"
   SOURCE_GLOB "${root}/example.c*"
   AUTOGLOB PLUGIN
@@ -33,21 +32,5 @@ add_hpx_executable(
   example_client INTERNAL_FLAGS
   SOURCES example_client.cpp
   DEPENDENCIES example_component
-  #FOLDER "Examples/PerformanceCounters/example"
 )
 
-
-#Don't work -> Cannot add target-level dependencies to non-existent target
-
-# add a custom target for this example
-#add_hpx_pseudo_target(examples.performance_counters.example_client)
-
-# make pseudo-targets depend on master pseudo-target
-#add_hpx_pseudo_dependencies(
-#  examples.performance_counters examples.performance_counters.example_client
-#)
-
-# add dependencies to pseudo-target
-#add_hpx_pseudo_dependencies(
-#  examples.performance_counters.example_client example_client
-#)
