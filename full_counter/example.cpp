@@ -24,6 +24,8 @@ namespace performance_counters { namespace example
     // The purpose of this function is to invoke the supplied function f for all
     // allowed counter instance names supported by the counter type this
     // function has been registered with.
+
+    //Invoked if counter name includes wilcards
     bool explicit_example_counter_discoverer(
         hpx::performance_counters::counter_info const& info,
         //f is called for each discovered performance counter instance
@@ -31,6 +33,8 @@ namespace performance_counters { namespace example
         hpx::performance_counters::discover_counters_mode mode, 
         hpx::error_code& ec
         ) {
+
+        std::cout << "discover" << std::endl;
 
         hpx::performance_counters::counter_info i = info;
 
@@ -97,12 +101,24 @@ namespace performance_counters { namespace example
     hpx::naming::gid_type explicit_example_counter_creator(
         hpx::performance_counters::counter_info const& info, hpx::error_code& ec)
     {
-        // verify the validity of the counter instance name
+        std::cout << "creator" << std::endl;
+
+        //Fill the given counter_path_elements instance from the given full name of a counter.
         hpx::performance_counters::counter_path_elements paths;
         get_counter_path_elements(info.fullname_, paths, ec);
-        if (ec) return hpx::naming::invalid_gid;
+        // verify the validity of the counter instance name
+        if (ec){
+        	std::cout << "if1:" << info.fullname_ << std::endl;
+        	//gid - Global identifier for components across the HPX system. 
+        	return hpx::naming::invalid_gid;
+        }
+
+        //???parentinstancename_
+        std::cout << paths.parentinstancename_ << std::endl;
 
         if (paths.parentinstance_is_basename_) {
+        	std::cout << "if2:" << std::endl;
+
             HPX_THROWS_IF(ec, hpx::bad_parameter,
                 "example::explicit_example_counter_creator",
                 "invalid counter instance parent name: " +
@@ -111,7 +127,10 @@ namespace performance_counters { namespace example
         }
 
         // create individual counter
+        //verifies instance#n
         if (paths.instancename_ == "instance" && paths.instanceindex_ != -1) {
+        	std::cout << "if3:" << std::endl;
+
             // make sure parent instance name is set properly
             hpx::performance_counters::counter_info complemented_info = info;
             complement_counter_info(complemented_info, info, ec);
@@ -136,6 +155,10 @@ namespace performance_counters { namespace example
                 ec = hpx::make_success_code();
             return id;
         }
+
+        	///example{{locality#{}/instance#{}}}/immediate/explicit
+        	std::cout << "4" << std::endl;
+
 
         HPX_THROWS_IF(ec, hpx::bad_parameter,
             "example::explicit_example_counter_creator",
