@@ -7,6 +7,7 @@
   * Definir um contador simples
   * Estudar templates e Curiously Recurring Template Pattern do C++
   * Definir um componente simples
+  * Definir um contador completo:
   
 * Objetivos em progresso:
-  * Definir um contador completo:
+  * Definir um contador que monitorize um componente:
