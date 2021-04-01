@@ -14,6 +14,10 @@ namespace server{
 			std::string content = "";
 
 		public:
+			test() : content("") {}
+
+			test(std::string initial_content) : content(initial_content) {}
+
 			void store(std::string new_content){
 				content = new_content;
 			}
