@@ -1,13 +1,11 @@
 #include <hpx/include/util.hpp>
 #include <hpx/include/performance_counters.hpp>
 #include <hpx/runtime_local/startup_function.hpp>
-
 #include <cstdint>
 
 #include "counter_server/example.hpp"
-
 #include "counter_server/example.hpp"
-#include "main.cpp"
+#include "comp.hpp"
 
 
 
@@ -47,6 +45,18 @@ namespace performance_counters { namespace example
     //
     // That means it will be executed in a HPX-thread before hpx_main, but after
     // the runtime has been initialized and started.
+
+    //Function that is called each time the counter is read
+    std::int64_t f(bool reset){
+        std::string name = "component";
+        comp component(hpx::agas::resolve_name(name).get());
+
+        if(component.get_id() != hpx::naming::invalid_id) //Check if component exists
+            return component.get();
+        else
+            return 0;
+    }
+
     void startup()
     {
         using namespace hpx::performance_counters;

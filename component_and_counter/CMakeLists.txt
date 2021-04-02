@@ -20,8 +20,15 @@ add_hpx_component( example
     HEADERS counter_server/example.hpp
 )
 
-add_hpx_executable( exec
+add_hpx_executable( api
     ESSENTIAL
-    SOURCES main.cpp
+    SOURCES api.cpp
     DEPENDENCIES comp_component example_component
+)
+ 
+add_hpx_executable( cmd
+    ESSENTIAL
+    SOURCES cmd.cpp
+    DEPENDENCIES comp_component example_component
+    COMPONENT_DEPENDENCIES iostreams
   )
