@@ -24,7 +24,10 @@ namespace performance_counters { namespace example { namespace server
     public:
         example_counter() : current_value_(0), evaluated_at_(0) {}
         explicit example_counter(
-            hpx::performance_counters::counter_info const& info);
+            hpx::performance_counters::counter_info const& info,
+            std::string component_name
+            );
+
 
         /// This function will be called in order to query the current value of
         /// this performance counter
@@ -47,6 +50,7 @@ namespace performance_counters { namespace example { namespace server
         mutable mutex_type mtx_;
         double current_value_;
         std::uint64_t evaluated_at_;
+        std::string component_name;
 
         hpx::util::interval_timer timer_;
     };

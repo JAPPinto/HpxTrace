@@ -14,6 +14,7 @@
 #include <mutex>
 
 #include "example.hpp"
+#include "../comp.hpp"
 
 ///////////////////////////////////////////////////////////////////////////////
 typedef hpx::components::component<
@@ -27,14 +28,16 @@ HPX_REGISTER_DERIVED_COMPONENT_FACTORY_DYNAMIC(
 namespace performance_counters { namespace example { namespace server
 {
     ///////////////////////////////////////////////////////////////////////////
-    example_counter::example_counter(hpx::performance_counters::counter_info const& info)
+    example_counter::example_counter(hpx::performance_counters::counter_info const& info, std::string component_name)
       : hpx::performance_counters::base_performance_counter<example_counter>(info),
         current_value_(0),
         evaluated_at_(0),
+        component_name(component_name),
         timer_(hpx::util::bind(&example_counter::evaluate, this),
             1000000, "example example performance counter")
     {
     }
+
 
     bool example_counter::start()
     {
@@ -67,7 +70,17 @@ namespace performance_counters { namespace example { namespace server
         value.status_ = hpx::performance_counters::status_new_data;
         value.count_ = ++invocation_count_;
 
-        return value;
+        comp component(hpx::agas::resolve_name(component_name).get());
+
+        std::cout << "AQUI" << std::endl; 
+
+        if(component.get_id() != hpx::naming::invalid_id) //Check if component exists
+            return component.get();
+        else
+            return 0;
+
+
+
     }
 
     void example_counter::finalize()
