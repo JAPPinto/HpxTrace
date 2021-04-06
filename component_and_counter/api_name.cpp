@@ -15,7 +15,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
 {
     //Create counter
     performance_counter implicit_counter(hpx::util::format(
-        "/example{{locality#{}/total}}/immediate/implicit",
+        "/examples{{locality#{}/component}}/name/explicit",
         hpx::get_locality_id()));
 
     //Read counter before component is created

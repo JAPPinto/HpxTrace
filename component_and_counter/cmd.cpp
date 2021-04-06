@@ -8,9 +8,9 @@
 
 
 /*
-    ./cmd --hpx:print-counter=/example{locality#0/total}/immediate/implicit --hpx:print-counter-interval=500
+    ./cmd --hpx:print-counter=/examples{locality#0/total}/name/implicit --hpx:print-counter-interval=500
 
-    ./cmd --hpx:print-counter=/example{locality#0/instance#0}/immediate/explicit --hpx:print-counter-interval=500
+    ./cmd --hpx:print-counter=/examples{locality#0/instance#0}/name/explicit --hpx:print-counter-interval=500
  
 */
 

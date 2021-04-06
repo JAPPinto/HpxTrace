@@ -13,44 +13,45 @@
 #include <cstdint>
 #include <mutex>
 
-#include "example.hpp"
+#include "basename_counter.hpp"
 #include "../comp.hpp"
 
 ///////////////////////////////////////////////////////////////////////////////
 typedef hpx::components::component<
-    ::performance_counters::example::server::example_counter
-> example_counter_type;
+    ::performance_counters::examples::server::basename_counter
+> basename_counter_type;
 
 HPX_REGISTER_DERIVED_COMPONENT_FACTORY_DYNAMIC(
-    example_counter_type, example_counter, "base_performance_counter");
+    basename_counter_type, basename_counter, "base_performance_counter");
 
 ///////////////////////////////////////////////////////////////////////////////
-namespace performance_counters { namespace example { namespace server
+namespace performance_counters { namespace examples { namespace server
 {
     ///////////////////////////////////////////////////////////////////////////
-    example_counter::example_counter(hpx::performance_counters::counter_info const& info, std::string component_name)
-      : hpx::performance_counters::base_performance_counter<example_counter>(info),
+    basename_counter::basename_counter(hpx::performance_counters::counter_info const& info, std::string component_basename, int sequence_nr)
+      : hpx::performance_counters::base_performance_counter<basename_counter>(info),
         current_value_(0),
         evaluated_at_(0),
-        component_name(component_name),
-        timer_(hpx::util::bind(&example_counter::evaluate, this),
-            1000000, "example example performance counter")
+        component_basename(component_basename),
+        sequence_nr(sequence_nr),
+        timer_(hpx::util::bind(&basename_counter::evaluate, this),
+            1000000, "basename_counter performance counter")
     {
     }
 
 
-    bool example_counter::start()
+    bool basename_counter::start()
     {
         return timer_.start();
     }
 
-    bool example_counter::stop()
+    bool basename_counter::stop()
     {
         return timer_.stop();
     }
 
     hpx::performance_counters::counter_value
-        example_counter::get_counter_value(bool reset)
+        basename_counter::get_counter_value(bool reset)
     {
         std::int64_t const scaling = 100000;
 
@@ -70,9 +71,7 @@ namespace performance_counters { namespace example { namespace server
         value.status_ = hpx::performance_counters::status_new_data;
         value.count_ = ++invocation_count_;
 
-        comp component(hpx::agas::resolve_name(component_name).get());
-
-        std::cout << "AQUI" << std::endl; 
+        comp component(hpx::find_from_basename(component_basename, sequence_nr).get());
 
         if(component.get_id() != hpx::naming::invalid_id) //Check if component exists
             return component.get();
@@ -83,13 +82,13 @@ namespace performance_counters { namespace example { namespace server
 
     }
 
-    void example_counter::finalize()
+    void basename_counter::finalize()
     {
         timer_.stop();
-        hpx::performance_counters::base_performance_counter<example_counter>::finalize();
+        hpx::performance_counters::base_performance_counter<basename_counter>::finalize();
     }
 
-    bool example_counter::evaluate()
+    bool basename_counter::evaluate()
     {
         std::lock_guard<mutex_type> mtx(mtx_);
         evaluated_at_ = static_cast<std::int64_t>(hpx::get_system_uptime());

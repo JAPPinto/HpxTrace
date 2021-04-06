@@ -13,17 +13,16 @@
 
 #include <cstdint>
 
-namespace performance_counters { namespace example { namespace server
+namespace performance_counters { namespace examples { namespace server
 {
-    ///////////////////////////////////////////////////////////////////////////
-    //[example_counter_definition
-    class example_counter
-      : public hpx::performance_counters::base_performance_counter<example_counter>
-    //]
+
+    class name_counter
+      : public hpx::performance_counters::base_performance_counter<name_counter>
+
     {
     public:
-        example_counter() : current_value_(0), evaluated_at_(0) {}
-        explicit example_counter(
+        name_counter() : current_value_(0), evaluated_at_(0) {}
+        explicit name_counter(
             hpx::performance_counters::counter_info const& info,
             std::string component_name
             );
