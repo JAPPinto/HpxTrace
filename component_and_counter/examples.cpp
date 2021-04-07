@@ -44,7 +44,7 @@ namespace performance_counters { namespace examples
         hpx::error_code& ec
         ) {
 
-        std::cout << "discover" << std::endl;
+        //std::cout << "discover" << std::endl;
 
         hpx::performance_counters::counter_info i = info;
 
@@ -69,7 +69,7 @@ namespace performance_counters { namespace examples
         if (mode == hpx::performance_counters::discover_counters_minimal ||
             p.parentinstancename_.empty() || p.instancename_.empty())
         {
-            std::cout << "discover if1" << std::endl;
+            //std::cout << "discover if1" << std::endl;
 
             if (p.parentinstancename_.empty())
             {
@@ -90,7 +90,7 @@ namespace performance_counters { namespace examples
 
         else if(p.instancename_ == "instance#*") {
 
-            std::cout << "discover if2" << std::endl;
+            //std::cout << "discover if2" << std::endl;
 
             HPX_ASSERT(mode == hpx::performance_counters::discover_counters_full);
 
@@ -102,17 +102,17 @@ namespace performance_counters { namespace examples
                 return false;
         }
         else if (!f(i, ec) || ec) {
-            std::cout << "discover if3" << std::endl;
+            //std::cout << "discover if3" << std::endl;
 
             return false;
         }
 
         if (&ec != &hpx::throws){
-            std::cout << "discover if4" << std::endl;
+            //std::cout << "discover if4" << std::endl;
             ec = hpx::make_success_code();
         }
 
-        std::cout << "discover end" << std::endl;
+        //std::cout << "discover end" << std::endl;
 
 
         return true;    // everything is ok
@@ -165,27 +165,27 @@ namespace performance_counters { namespace examples
         return id;
     }
 
-
+/*
     hpx::naming::gid_type explicit_name_counter_creator2(
         hpx::performance_counters::counter_info const& info, hpx::error_code& ec)
     {
-        std::cout << "creator" << std::endl;
+        //std::cout << "creator" << std::endl;
 
         //Fill the given counter_path_elements instance from the given full name of a counter.
         hpx::performance_counters::counter_path_elements paths;
         get_counter_path_elements(info.fullname_, paths, ec);
         // verify the validity of the counter instance name
         if (ec){
-            std::cout << "creator if1:" << info.fullname_ << std::endl;
+            //std::cout << "creator if1:" << info.fullname_ << std::endl;
             //gid - Global identifier for components across the HPX system. 
             return hpx::naming::invalid_gid;
         }
 
         //???parentinstancename_
-        std::cout << paths.parentinstancename_ << std::endl;
+        //std::cout << paths.parentinstancename_ << std::endl;
 
         if (paths.parentinstance_is_basename_) {
-            std::cout << "creator if2:" << std::endl;
+            //std::cout << "creator if2:" << std::endl;
 
             HPX_THROWS_IF(ec, hpx::bad_parameter,
                 "name_counter::explicit_name_counter_creator",
@@ -197,7 +197,7 @@ namespace performance_counters { namespace examples
         // create individual counter
         //verifies instance#n
         if (paths.instancename_ == "instance" && paths.instanceindex_ != -1) {
-            std::cout << "creator if3:" << std::endl;
+            //std::cout << "creator if3:" << std::endl;
 
             // make sure parent instance name is set properly
             hpx::performance_counters::counter_info complemented_info = info;
@@ -207,7 +207,7 @@ namespace performance_counters { namespace examples
             // create the counter as requested
             hpx::naming::gid_type id;
             try {
-                std::cout << "creator construct:" << std::endl;
+                //std::cout << "creator construct:" << std::endl;
 
                 // create the 'name_counter' performance counter component locally, we
                 // only get here if this instance does not exist yet
@@ -229,7 +229,7 @@ namespace performance_counters { namespace examples
         }
 
             ///name_counter{{locality#{}/instance#{}}}/immediate/explicit
-            std::cout << "creator end" << std::endl;
+            //std::cout << "creator end" << std::endl;
 
 
         HPX_THROWS_IF(ec, hpx::bad_parameter,
@@ -238,7 +238,7 @@ namespace performance_counters { namespace examples
         return hpx::naming::invalid_gid;
     }
 
-
+*/
     //Function that is called each time the counter is read
     std::int64_t name_implicit_f(bool reset){
         std::string name = "component";

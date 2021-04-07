@@ -8,6 +8,17 @@
 #include "comp.hpp"
 
 
+/*
+
+    Example that uses name_counter in the code
+
+    With name_counter the correspondent component is identified through its registered name
+    If the component does not yet exist, get_value() will return 0
+*/
+
+
+
+
 using hpx::performance_counters::performance_counter;
 
 

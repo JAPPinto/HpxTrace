@@ -8,9 +8,15 @@
 
 
 /*
+
+     Example to use (base)name_counters with the command line
+
     ./cmd --hpx:print-counter=/examples{locality#0/total}/name/implicit --hpx:print-counter-interval=500
 
-    ./cmd --hpx:print-counter=/examples{locality#0/instance#0}/name/explicit --hpx:print-counter-interval=500
+    ./cmd --hpx:print-counter=/examples{locality#0/component#0}/name/explicit --hpx:print-counter-interval=500
+
+    ./cmd --hpx:print-counter=/examples{locality#0/component#0}/basename/explicit --hpx:print-counter=/examples{locality#0/component#1}/basename/explicit  --hpx:print-counter-interval=500
+
  
 */
 
@@ -23,15 +29,27 @@ int hpx_main(hpx::program_options::variables_map& vm)
 {
 
 	
-    //Create component
-    comp component = hpx::new_<server::comp>(hpx::find_here());
+    //Create components
+    comp component_name = hpx::new_<server::comp>(hpx::find_here());
+    comp component_basename_0 = hpx::new_<server::comp>(hpx::find_here());
+    comp component_basename_1 = hpx::new_<server::comp>(hpx::find_here());
 
-    //Register component name in agas
+
+
+    //Register component_name name in agas
     std::string name = "component";
-    hpx::agas::register_name(name, component.get_id());
+    hpx::agas::register_name(name, component_name.get_id());
+
+    //Register component_basename basename and sequence number in agas
+    hpx::register_with_basename(name, component_basename_0.get_id(), 0);
+    hpx::register_with_basename(name, component_basename_1.get_id(), 1);
+
+    
 
     for (int i = 0; i < 5; i++) {
-    	component.add(1);
+    	component_name.add(1);
+        component_basename_0.add(1);
+        component_basename_1.add(-1);
 		sleep(1);
     }
 
