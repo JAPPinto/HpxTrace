@@ -31,9 +31,13 @@ namespace performance_counters { namespace examples
 {
 
 
-    // The purpose of this function is to invoke the supplied function f for all
-    // allowed counter instance names supported by the counter type this
-    // function has been registered with.
+    /*The purpose of this function is to invoke the supplied function f for all
+      allowed counter instance names supported by the counter type this
+      function has been registered with.
+	  
+	  Translation: if the name contains willcards call counter_creator for each possible variation
+	  For now, still the same as the official example
+	*/
 
     bool explicit_name_counter_discoverer(
         //type, version, status, fullname, help text, unit of measure
@@ -118,7 +122,6 @@ namespace performance_counters { namespace examples
         return true;    // everything is ok
     }
 
-    ///////////////////////////////////////////////////////////////////////////
     // Creation function for explicit name_counter performance counter. It's purpose is
     // to create and register a new instance of the given name (or reuse an
     // existing instance).
@@ -165,8 +168,9 @@ namespace performance_counters { namespace examples
         return id;
     }
 
+	//Original version
 /*
-    hpx::naming::gid_type explicit_name_counter_creator2(
+    hpx::naming::gid_type explicit_name_counter_creator(
         hpx::performance_counters::counter_info const& info, hpx::error_code& ec)
     {
         //std::cout << "creator" << std::endl;
@@ -239,7 +243,7 @@ namespace performance_counters { namespace examples
     }
 
 */
-    //Function that is called each time the counter is read
+    //Function that is called each time the implicit counter is read
     std::int64_t name_implicit_f(bool reset){
         std::string name = "component";
         comp component(hpx::agas::resolve_name(name).get());
@@ -262,7 +266,7 @@ namespace performance_counters { namespace examples
         using hpx::util::placeholders::_1;
         using hpx::util::placeholders::_2;
 
-
+        //calls name_implicit_f every time the counter is read, not very useful in this case
         install_counter_type(
             "/examples/name/implicit", //name
             counter_raw,                   //type - shows the last observed value 

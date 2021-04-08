@@ -71,14 +71,17 @@ namespace performance_counters { namespace examples { namespace server
         value.status_ = hpx::performance_counters::status_new_data;
         value.count_ = ++invocation_count_;
 
-        comp component(hpx::find_from_basename(component_basename, sequence_nr).get());
+        //Important part
 
-        if(component.get_id() != hpx::naming::invalid_id) //Check if component exists
+        //blocks if the components has not been registered
+        hpx::future<hpx::id_type> id = hpx::find_from_basename(component_basename, sequence_nr);
+
+        if(id.is_ready()){
+            comp component(id.get());
             return component.get();
+        }
         else
             return 0;
-
-
 
     }
 

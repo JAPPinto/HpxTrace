@@ -70,6 +70,8 @@ namespace performance_counters { namespace examples { namespace server
         value.status_ = hpx::performance_counters::status_new_data;
         value.count_ = ++invocation_count_;
 
+        //Important part
+
         comp component(hpx::agas::resolve_name(component_name).get());
 
         if(component.get_id() != hpx::naming::invalid_id) //Check if component exists
