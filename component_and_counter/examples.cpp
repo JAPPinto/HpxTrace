@@ -7,9 +7,7 @@
 #include "name_counter_server/name_counter.hpp"
 #include "basename_counter_server/basename_counter.hpp"
 #include "basename_counter_server/basename_counter.hpp"
-#include "comp.hpp"
-
-
+//#include "comp.hpp"
 
 
 

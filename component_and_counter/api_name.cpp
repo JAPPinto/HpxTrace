@@ -33,8 +33,14 @@ int hpx_main(hpx::program_options::variables_map& vm)
     std::cout << "Counter value: " << implicit_counter.get_value<double>().get() << std::endl;
 
 
+    //Find all localities
+    std::vector<hpx::naming::id_type> localities = hpx::find_all_localities();
+
+
+    //locality#x is irrelevant for now
+
     //Create component
-    comp component = hpx::new_<server::comp>(hpx::find_here());
+    comp component = hpx::new_<server::comp>(localities.back());
 
     //Register component name in agas
     std::string name = "component";

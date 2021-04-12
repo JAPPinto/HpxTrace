@@ -28,11 +28,13 @@ using hpx::performance_counters::performance_counter;
 int hpx_main(hpx::program_options::variables_map& vm)
 {
 
-	
-    //Create components
-    comp component_name = hpx::new_<server::comp>(hpx::find_here());
-    comp component_basename_0 = hpx::new_<server::comp>(hpx::find_here());
-    comp component_basename_1 = hpx::new_<server::comp>(hpx::find_here());
+	//Find all localities
+    std::vector<hpx::naming::id_type> localities = hpx::find_all_localities();
+
+    //Create components (in another locality if there are multiple)
+    comp component_name = hpx::new_<server::comp>(localities.back());
+    comp component_basename_0 = hpx::new_<server::comp>(localities.back());
+    comp component_basename_1 = hpx::new_<server::comp>(localities.back());
 
 
 

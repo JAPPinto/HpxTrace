@@ -14,7 +14,9 @@
 #include <mutex>
 
 #include "basename_counter.hpp"
-#include "../comp.hpp"
+
+#include <unistd.h>
+
 
 ///////////////////////////////////////////////////////////////////////////////
 typedef hpx::components::component<
@@ -34,6 +36,7 @@ namespace performance_counters { namespace examples { namespace server
         evaluated_at_(0),
         component_basename(component_basename),
         sequence_nr(sequence_nr),
+        ready(false),
         timer_(hpx::util::bind(&basename_counter::evaluate, this),
             1000000, "basename_counter performance counter")
     {
@@ -73,16 +76,31 @@ namespace performance_counters { namespace examples { namespace server
 
         //Important part
 
+        if(ready)
+            return component.get();
+
         //blocks if the components has not been registered
         hpx::future<hpx::id_type> id = hpx::find_from_basename(component_basename, sequence_nr);
 
+        if (id.wait_for(std::chrono::milliseconds(1000)) ==  hpx::lcos::future_status::ready) {
+            ready = true;
+            component = comp(id.get());
+            return component.get();
+        } 
+        else {
+            return 0;
+        }
+/*
+        //temporary fix, if there are multiple localities, it takes a while for the future to be ready
+        sleep(1);
         if(id.is_ready()){
             comp component(id.get());
+
             return component.get();
         }
         else
-            return 0;
-
+          return 0;
+*/
     }
 
     void basename_counter::finalize()

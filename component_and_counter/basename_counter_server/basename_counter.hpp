@@ -10,8 +10,10 @@
 #include <hpx/include/lcos_local.hpp>
 #include <hpx/include/performance_counters.hpp>
 #include <hpx/include/util.hpp>
-
 #include <cstdint>
+
+
+#include "../comp.hpp"
 
 namespace performance_counters { namespace examples { namespace server
 {
@@ -52,6 +54,8 @@ namespace performance_counters { namespace examples { namespace server
         std::uint64_t evaluated_at_;
         std::string component_basename;
         int sequence_nr;
+        comp component;
+        bool ready;
 
         hpx::util::interval_timer timer_;
     };
