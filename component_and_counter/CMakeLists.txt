@@ -39,4 +39,21 @@ add_hpx_executable( cmd
     SOURCES cmd.cpp
     DEPENDENCIES comp_component example_counters_component
     COMPONENT_DEPENDENCIES iostreams
-  )
+)
+
+add_hpx_executable( action-invocation_count
+    ESSENTIAL
+    SOURCES action-invocation_count.cpp
+    DEPENDENCIES comp_component
+    COMPONENT_DEPENDENCIES iostreams
+)
+
+
+#add_hpx_executable( apex
+#    ESSENTIAL
+#    SOURCES apex.cpp
+#DEPENDENCIES comp_component
+#    COMPONENT_DEPENDENCIES iostreams
+#)
+
+

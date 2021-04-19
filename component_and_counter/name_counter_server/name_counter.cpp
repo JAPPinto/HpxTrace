@@ -8,7 +8,6 @@
 #include <hpx/include/components.hpp>
 #include <hpx/include/performance_counters.hpp>
 #include <hpx/include/util.hpp>
-#include <hpx/runtime/actions/continuation.hpp>
 
 #include <cstdint>
 #include <mutex>
