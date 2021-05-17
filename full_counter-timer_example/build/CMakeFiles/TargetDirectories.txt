@@ -1,0 +1,8 @@
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/build/CMakeFiles/install/strip.dir
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/build/CMakeFiles/install/local.dir
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/build/CMakeFiles/install.dir
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/build/CMakeFiles/list_install_components.dir
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/build/CMakeFiles/rebuild_cache.dir
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/build/CMakeFiles/edit_cache.dir
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/build/CMakeFiles/example_client.dir
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/build/CMakeFiles/example_component.dir

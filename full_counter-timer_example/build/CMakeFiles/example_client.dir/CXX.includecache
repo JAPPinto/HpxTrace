@@ -1,0 +1,26 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/example_client.cpp
+hpx/hpx.hpp
+-
+hpx/hpx_init.hpp
+-
+hpx/include/util.hpp
+-
+hpx/modules/program_options.hpp
+-
+cstdint
+-
+iostream
+-
+string
+-
+vector
+-
+

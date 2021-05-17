@@ -1,0 +1,34 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/example.cpp
+hpx/include/util.hpp
+-
+hpx/include/performance_counters.hpp
+-
+hpx/runtime_local/startup_function.hpp
+-
+cstdint
+-
+server/example.hpp
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/server/example.hpp
+execinfo.h
+-
+
+/home/z/Desktop/HPX-Performance-Counters/full_counter2/server/example.hpp
+hpx/hpx.hpp
+-
+hpx/include/lcos_local.hpp
+-
+hpx/include/performance_counters.hpp
+-
+hpx/include/util.hpp
+-
+cstdint
+-
+
