@@ -9,7 +9,6 @@
 #include <apex_api.hpp>
 
 
-
 using hpx::performance_counters::performance_counter;
 
 
@@ -21,17 +20,15 @@ int hpx_main(hpx::program_options::variables_map& vm)
 
 	//Find all localities
     std::vector<hpx::naming::id_type> localities = hpx::find_all_localities();
+    std::uint64_t n_localities = localities.size();
 
 
     std::vector<comp> components;
     std::uint64_t n_components = vm["components"].as<std::uint64_t>();
 
     for (int i = 0; i < n_components; i++) {
-    	components.push_back(hpx::new_<server::comp>(localities.back()));
+    	components.push_back(hpx::new_<server::comp>(localities[i % n_localities]));
     }
-
-
-
 
     std::uint64_t n_actions = vm["actions"].as<std::uint64_t>();
     
@@ -77,12 +74,10 @@ int main(int argc, char* argv[]) {
     std::cout << "Calls to comp_add_action: " << count << std::endl;
     apex_profile * prof = apex::get_profile("comp_add_action");
 
-    // for some reason, the APEX count is off by 3, regardless of the N value.
-    // This can be tested by running fibonacci of 0, 1, 2, and 3
     std::cout << "APEX measured calls to comp_add_action: "
         << prof->calls << std::endl;
 
-    return status;
+    return 0;
 
 
 
