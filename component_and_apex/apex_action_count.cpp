@@ -77,6 +77,15 @@ int main(int argc, char* argv[]) {
     std::cout << "APEX measured calls to comp_add_action: "
         << prof->calls << std::endl;
 
+
+	for (int i = 0; i < 8; i++) {
+		std::cout << "Accumulated PAPI hardware metrics: "
+        << prof->papi_metrics[i] << std::endl;
+    }
+
+
+    apex::sample_value("threads{locality#0/total/total}/count/cumulative", 0);
+
     return 0;
 
 

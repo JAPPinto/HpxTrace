@@ -23,3 +23,9 @@ add_hpx_executable( apex_action_count
     DEPENDENCIES comp_component 
 )
 
+add_hpx_executable( probes
+    ESSENTIAL
+    SOURCES probes.cpp
+    DEPENDENCIES comp_component 
+)
+
