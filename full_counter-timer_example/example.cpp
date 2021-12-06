@@ -8,10 +8,10 @@
 
 #include <execinfo.h>
 
+#define MAX_INSTANCES 2
 
-// Add factory registration functionality, We register the module dynamically
-// as no executable links against it.
-HPX_REGISTER_COMPONENT_MODULE_DYNAMIC();
+
+HPX_REGISTER_COMPONENT_MODULE();
 
 typedef hpx::components::component<
     ::performance_counters::example::server::example_counter
@@ -35,6 +35,8 @@ namespace performance_counters { namespace example
         ) {
 
         std::cout << "discover" << std::endl;
+        std::cout << info.fullname_ << std::endl;
+
 
     	// compose the counter name templates
 
@@ -63,20 +65,17 @@ namespace performance_counters { namespace example
             p.parentinstancename_.empty() || p.instancename_.empty())
         {
 
-            std::cout << "if1" << std::endl;
+
+            std::cout  << "if minimal"  << std::endl;
 
             if (p.parentinstancename_.empty())
             {
-                std::cout << "if2" << std::endl;
-
                 p.parentinstancename_ = "locality#*";
                 p.parentinstanceindex_ = -1;
             }
 
             if (p.instancename_.empty())
             {
-                std::cout << "if3" << std::endl;
-
                 p.instancename_ = "instance#*";
                 p.instanceindex_ = -1;
             }
@@ -85,48 +84,38 @@ namespace performance_counters { namespace example
             //if (!status_is_valid(status) || !f(i, ec) || ec)
               //  return false;
         }
+        else if(p.instancename_ == "instance#*") {
 
-        std::cout << p.parentinstancename_ << " " << p.parentinstanceindex_  << std::endl;
-        std::cout << p.instancename_ << " " << p.instanceindex_  << std::endl;
+            std::cout  << "if instance#*"  << std::endl;
 
+            HPX_ASSERT(mode == hpx::performance_counters::discover_counters_full);
 
-
-        //f(i, ec);
-
-        std::cout << "discover3" << std::endl;
-
-        exit(1);
-
-        return true;
-        /*
-
-
+            for (int n = 0; n < MAX_INSTANCES; n++){
+                p.instancename_ = "instance";
+                p.instanceindex_ = n;
+                status = get_counter_name(p, i.fullname_, ec);
+                std::cout << "instance#" << n << std::endl;
+                if (!status_is_valid(status) || !f(i, ec) || ec)
+                    return false;  
+            }
+        }
 
 
 
         //discover_counters_mode = discover_counters_minimal oir discover_counters_full
+        std::cout << "aqui" << std::endl;
 
-
-        else if(p.instancename_ == "instance#*") {
-            HPX_ASSERT(mode == hpx::performance_counters::discover_counters_full);
-
-            // FIXME: expand for all instances
-            p.instancename_ = "instance";
-            p.instanceindex_ = 0;
-            status = get_counter_name(p, i.fullname_, ec);
-            if (!status_is_valid(status) || !f(i, ec) || ec)
-                return false;
-        }
-        else if (!f(i, ec) || ec) {
+        if (!f(i, ec) || ec) {
+        std::cout << "aqui1" << std::endl;
             return false;
         }
+        std::cout << "discover end \n\n\n" << std::endl;
 
         if (&ec != &hpx::throws)
             ec = hpx::make_success_code();
 
         return true;    // everything is ok
 
-        */
     }
 
 	///////////////////////////////////////////////////////////////////////////
@@ -136,19 +125,19 @@ namespace performance_counters { namespace example
     hpx::naming::gid_type explicit_example_counter_creator(
         hpx::performance_counters::counter_info const& info, hpx::error_code& ec)
     {
-        std::cout << "creator" << std::endl;
+        std::cout << "\ncreator" << std::endl;
 
-/*
-        void *array[10];
-        size_t size;
+
+        //void *array[10];
+        //size_t size;
 
         // get void*'s for all entries on the stack
-        size = backtrace(array, 10);
+       // size = backtrace(array, 10);
 
         // print out all the frames to stderr
-        backtrace_symbols_fd(array, size, STDERR_FILENO);
-        exit(1);
-*/
+        //backtrace_symbols_fd(array, size, STDERR_FILENO);
+        //exit(1);
+
 
         //Fill the given counter_path_elements instance from the given full name of a counter.
         hpx::performance_counters::counter_path_elements paths;
@@ -241,7 +230,7 @@ namespace performance_counters { namespace example
         using hpx::util::placeholders::_1;
         using hpx::util::placeholders::_2;
 
-
+        std::cout << "AAAAAA" << std::endl;
         install_counter_type(
             "/example/immediate/implicit", //name
             counter_raw,                   //type - shows the last observed value 
@@ -294,7 +283,7 @@ namespace performance_counters { namespace example
 // type and performance counter instances.
 //
 // Note that this macro can be used not more than once in one module.
-HPX_REGISTER_STARTUP_MODULE_DYNAMIC(::performance_counters::example::get_startup);
+HPX_REGISTER_STARTUP_MODULE(::performance_counters::example::get_startup);
 
 
 

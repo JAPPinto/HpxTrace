@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "example.cpp"
+
 
 void implicit_counter(){
 
@@ -33,12 +35,14 @@ void explicit_counter(){
 
     using hpx::performance_counters::performance_counter;
 
-    performance_counter explicit_counter(hpx::util::format(
-        "/example{{locality#{}/instance#{}}}/immediate/explicit",
-        hpx::get_locality_id(), 0));
+   // performance_counter explicit_counter(hpx::util::format(
+     //   "/example{{locality#{}/instance#{}}}/immediate/explicit",
+       // hpx::get_locality_id(), 0));
+
+    performance_counter explicit_counter("/example{locality#0/instance#0}/immediate/explicit");
+
 
     explicit_counter.start();
-
 
     std::cout <<  explicit_counter.get_value<double>().get() << std::endl;
 
@@ -52,6 +56,42 @@ void explicit_counter(){
 
 }
 
+void explicit_counter_2(){
+
+    std::cout << "ABC" << std::endl;
+
+    using hpx::performance_counters::performance_counter;
+
+
+
+    performance_counter explicit_counter_a(hpx::util::format(
+        "/example{{locality#{}/instance#{}}}/immediate/explicit",
+        0, 0));
+
+    std::cout << "DEF" << std::endl;
+
+
+    explicit_counter_a.start();
+
+
+    hpx::this_thread::suspend(std::chrono::milliseconds(3000));
+
+    performance_counter explicit_counter_b(hpx::util::format(
+        "/example{{locality#{}/instance#{}}}/immediate/explicit",
+        0, 0));
+
+    std::cout << "GHI" << std::endl;
+
+    hpx::this_thread::suspend(std::chrono::milliseconds(3000));
+
+
+
+    std::cout <<  explicit_counter_a.get_value<double>().get() << std::endl;
+    std::cout <<  explicit_counter_b.get_value<double>().get() << std::endl;
+
+
+}
+
 
 int hpx_main(hpx::program_options::variables_map& vm)
 {
@@ -59,8 +99,8 @@ int hpx_main(hpx::program_options::variables_map& vm)
 
 
     // Initiate shutdown of the runtime system.
-    //explicit_counter();
-    for (int i = 0; i < 1000000000; ++i)
+    explicit_counter();
+    for (int i = 0; i < 10000000; ++i) //1000000000
     {
         i++;
     }
