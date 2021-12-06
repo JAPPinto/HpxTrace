@@ -24,6 +24,3 @@ add_hpx_executable(ex4-simple_counter
     SOURCES ex4-simple_counter.cpp
     COMPONENT_DEPENDENCIES iostreams)
 
-add_hpx_executable(ex5-localities
-    SOURCES ex5-localities.cpp
-    COMPONENT_DEPENDENCIES iostreams)

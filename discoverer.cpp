@@ -27,9 +27,11 @@
         if (!status_is_valid(status)) return false;
 
         //discover_counters_mode = discover_counters_minimal oir discover_counters_full
+        //Se o nome não estiver completo, adiciona a parte em falta, só que isto nunca acontece
         if (mode == hpx::performance_counters::discover_counters_minimal ||
             p.parentinstancename_.empty() || p.instancename_.empty())
         {
+            //Parent instance nunca está vazio???
             if (p.parentinstancename_.empty())
             {
                 p.parentinstancename_ = "locality#*";
@@ -46,7 +48,7 @@
             if (!status_is_valid(status) || !f(i, ec) || ec)
                 return false;
         }
-
+        //Posso expandir e criar isntace 0,1,2,3
         else if(p.instancename_ == "instance#*") {
             HPX_ASSERT(mode == hpx::performance_counters::discover_counters_full);
 

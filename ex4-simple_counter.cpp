@@ -25,6 +25,13 @@ std::int64_t tails_counter(bool reset){
     return heads;
 }
 
+std::vector<std::int64_t> heads_tails_counter(bool reset){
+    std::vector<std::int64_t> result;
+    result.push_back(heads);
+    result.push_back(tails);
+    return result;
+}
+
 
 void register_counter_type() {
     // Call the HPX API function to register the counter type.
@@ -38,8 +45,16 @@ void register_counter_type() {
     hpx::performance_counters::install_counter_type(
         "/test/tails",                                  // counter type name
         &tails_counter,                                 // function providing counter data
-        "returns the number of taiks"                   // description text (optional)
+        "returns the number of tails"                   // description text (optional)
         "tails"                                         // unit of measure (optional)
+    );
+
+    // Call the HPX API function to register the counter type.
+    hpx::performance_counters::install_counter_type(
+        "/example/heads-tails",                          // counter type name
+        &heads_tails_counter,                           // function providing counter data
+        "returns the number of heads and tails"         // description text (optional)
+        "heads:tails"                                 // unit of measure (optional)
     );
 }
 

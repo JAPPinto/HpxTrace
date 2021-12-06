@@ -10,7 +10,7 @@ Simple example thats counts the total number of user threads executed by worker 
 int main() {
     const int n = 10000000;
     std::vector<double> v(n);
-
+/* 
     //Initialize counter for each thread
     std::size_t const os_threads = hpx::get_os_thread_count();
     std::vector<hpx::performance_counters::performance_counter> counters(os_threads);
@@ -26,6 +26,6 @@ int main() {
     for (int i = 0; i < os_threads; i++) {
         hpx::cout << "worker-thread#" + std::to_string(i) + ": " << counters[i].get_value<int>().get() << hpx::endl;
     }
-
+*/ 
     return 0;
 }

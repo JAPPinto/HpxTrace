@@ -7,3 +7,6 @@ cmake3 -DCMAKE_PREFIX_PATH=${HPX_PASTA}/hpx-1.6-System/ -DCMAKE_CXX_FLAGS=-std=c
 make -j 8
 
 export APEX_SCREEN_OUTPUT=1
+
+
+mv libexample_counters.so  /AreaGeral/HPX/hpx-1.6.0/build/lib/hpx/libhpx_example_counters.so

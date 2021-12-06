@@ -12,7 +12,7 @@ Note: for some reason with PAPI counters it is necessary to call start() otherwi
 int main() {
     const int n = 50000000;
     std::vector<double> v(n);
-
+/* 
     //Initialize counter for each thread
     std::size_t const os_threads = hpx::get_os_thread_count();
     std::vector<hpx::performance_counters::performance_counter> counters(os_threads);
@@ -31,6 +31,7 @@ int main() {
         //auto a = counters[0].get_value<int>().get();
         hpx::cout << "worker-thread#" + std::to_string(i) + ": " << counters[i].get_value<int>().get() << hpx::endl;
     }
+    */
 
     return 0;
 }

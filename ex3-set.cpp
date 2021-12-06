@@ -19,7 +19,7 @@ int main() {
 
     //Doesn't work, why?
     //hpx::performance_counters::performance_counter_set counters("/threads{locality#0/worker-thread#*/total}/count/cumulative");
-    
+   /* 
 
 
     hpx::for_loop(hpx::execution::par, 0, n, [&v](auto i) { v[i] = std::sqrt(i);});
@@ -29,7 +29,7 @@ int main() {
 
     for (int i = 0; i < values.size(); i++) {
         hpx::cout << "worker-thread#" + std::to_string(i) + ": " << values[i] << hpx::endl;
-    }
+    }*/
 
     return 0;
 }
