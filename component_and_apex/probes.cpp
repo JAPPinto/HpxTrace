@@ -42,6 +42,9 @@ std::atomic<std::uint64_t> count(0);
 
 int hpx_main(hpx::program_options::variables_map& vm)
 {
+
+                std::cout << "HPX MAIN" << "\n";
+
     std::vector<std::string> arguments_values = {"1","2","3"};
 
 
@@ -59,13 +62,18 @@ int hpx_main(hpx::program_options::variables_map& vm)
 
 
     API::trigger_probe("abc", arguments_values);
+    API::trigger_probe("xyz", arguments_values);
     API::trigger_probe("abc", arguments_values);
+    API::trigger_probe("xyz", arguments_values);
     API::trigger_probe("abc", arguments_values);
-    
+    API::trigger_probe("xyz", arguments_values);
+
 
     hpx::finalize();
     return 0;
 }
+
+//BEGIN END
 
 
 int main(int argc, char* argv[]) {
@@ -80,6 +88,23 @@ int main(int argc, char* argv[]) {
           hpx::program_options::value<std::string>()->default_value(""),
           "script for tracing")
         ;
+
+
+                std::cout << *argv[1] << "\n";
+
+
+       /* apex::register_policy(APEX_STARTUP,
+          [](apex_context const& context)->int{
+ 
+                std::cout << "STARTUP" << "\n";
+
+
+
+
+            return APEX_NOERROR;
+            });
+
+*/
 
 
 

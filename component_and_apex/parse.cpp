@@ -28,7 +28,9 @@ namespace API
 
 
 
-
+    void print_variable(std::string variable){
+        std::cout << "API PRINT:" << gv[variable] << std::endl;
+    }
 
 
     ///////////////////////////////////////////////////////////////////////////
@@ -68,7 +70,10 @@ namespace API
 
 */
 
-        qi::rule<Iterator, ascii::space_type, double> expression, term, factor, assignment;
+        qi::rule<Iterator, ascii::space_type, double> expression, term, factor, assignment, function ;
+        qi::rule<Iterator, ascii::space_type> probe, statement, print;
+
+
 
         expression =
             term                            [_val = _1]
@@ -98,10 +103,13 @@ namespace API
         
         assignment = (var >> '=' >> expression)[phx::ref(gv)[_1] = _2];
 
+        print = "print(" >> var[&print_variable] >> ')'; 
 
-        qi::rule<Iterator, ascii::space_type> probe;
+        //function = print;
 
-        probe = assignment >> ';' >> *(assignment >> ';');
+        statement = assignment | print;
+
+        probe = statement >> ';' >> *(statement >> ';');
 
 
 
@@ -122,9 +130,7 @@ namespace API
     }
     //]
 
-    void print(std::string variable){
-        std::cout << gv[variable] << std::endl;
-    }
+
 
 
     void trigger_probe(std::string probe_name, std::vector<std::string> arguments_values){
@@ -169,24 +175,54 @@ namespace API
 
     }
 
-    void parse_script(const std::string& script){
+    void parse_script(std::string script){
         std::regex rgx("([a-zA-Z0-9]+)\\{([^{}]*)\\}");
         std::smatch match;
 
-        std::regex_search(script.begin(), script.end(), match, rgx);
-
-        std::cout << match[1] << "\n" << match[2] << "\n";
-
-
-        std::string probe_name = match[1];
-        std::string probe_script = match[2];
-
-
-
-        std::map<std::string,double> gv;
-
         std::vector<std::string> arguments_names = {"i","j","k"};
-        register_probe(probe_name, arguments_names, probe_script);
+
+
+        while (std::regex_search(script, match, rgx)){
+            std::string probe_name = match[1];
+            std::string probe_script = match[2];
+                    std::cout << probe_name << "\n";
+
+            if(probe_name == "BEGIN"){
+                parse_probe(probe_script.begin(), probe_script.end());
+
+                std::cout << gv["x"] << "\n";
+
+            }
+
+            else if(probe_name == "END"){
+                std::string end_script = probe_script;
+
+                hpx::register_shutdown_function(
+                  [end_script]()->void{
+         
+                    
+                    parse_probe(end_script.begin(), end_script.end());
+
+
+                std::cout << gv["x"] << "\n";
+                    
+                });
+            }
+
+
+
+            register_probe(probe_name, arguments_names, probe_script);
+
+            script = match.suffix();
+
+        }
+
+
+
+
+
+
+
 
 
 
