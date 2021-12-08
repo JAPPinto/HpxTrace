@@ -133,16 +133,9 @@ namespace API
 
 
 
-    void trigger_probe(std::string probe_name, std::vector<std::string> arguments_values){
-        //trigger_event();
+    void trigger_probe(std::string probe_name, std::map<std::string,double> arguments){
 
-
-        for (int i = 0; i < arguments_values.size(); i++) {
-            //std::cout << arguments_values[i] << std::endl;
-                    
-        }
-
-        apex::custom_event(event_types[probe_name], &arguments_values);
+        apex::custom_event(event_types[probe_name], &arguments);
     }
 
     void register_probe(std::string probe_name, std::vector<std::string> arguments_names, std::string script){
@@ -154,11 +147,12 @@ namespace API
           [arguments_names, script](apex_context const& context)->int{
                 //std::cout << context.event_type << std::endl;
                 //vector<MyClass*>& v = *reinterpret_cast<vector<MyClass*> *>(voidPointerName);
-                std::vector<std::string>& arguments_values = *reinterpret_cast<std::vector<std::string>*>(context.data);
-                for (int i = 0; i < arguments_names.size(); i++) {
-                    //std::cout << arguments_names[i] << " " << arguments_values[i] << std::endl;
-                    
+                std::map<std::string,double>& arguments = *reinterpret_cast<std::map<std::string,double>*>(context.data);
+                
+                for (auto const& arg : arguments){
+                    gv[arg.first] = arg.second;
                 }
+
 
 
                 parse_probe(script.begin(), script.end());
@@ -185,7 +179,7 @@ namespace API
         while (std::regex_search(script, match, rgx)){
             std::string probe_name = match[1];
             std::string probe_script = match[2];
-                    std::cout << probe_name << "\n";
+            //std::cout << probe_name << "\n";
 
             if(probe_name == "BEGIN"){
                 parse_probe(probe_script.begin(), probe_script.end());
