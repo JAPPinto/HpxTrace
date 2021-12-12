@@ -207,11 +207,16 @@ namespace API
     //]
 
 
+    typedef std::pair<std::map<std::string,double>,std::map<std::string,std::string>> arguments;
 
-
-    void trigger_probe(std::string probe_name, std::map<std::string,double> arguments){
-
-        apex::custom_event(event_types[probe_name], &arguments);
+    void trigger_probe(std::string probe_name, 
+        std::map<std::string,double> double_arguments = {},
+        std::map<std::string,std::string> string_arguments = {}){
+        
+            arguments args;
+            args.first = double_arguments;
+            args.second = string_arguments;
+            apex::custom_event(event_types[probe_name], &args);
     }
 
     void register_probe(std::string probe_name, std::string script){
@@ -223,10 +228,22 @@ namespace API
           [script](apex_context const& context)->int{
                 //std::cout << context.event_type << std::endl;
                 //vector<MyClass*>& v = *reinterpret_cast<vector<MyClass*> *>(voidPointerName);
-                std::map<std::string,double>& arguments = *reinterpret_cast<std::map<std::string,double>*>(context.data);
-                
-                for (auto const& arg : arguments){
-                    dvars[arg.first] = arg.second;
+                arguments& args = *reinterpret_cast<arguments*>(context.data);
+                std::map<std::string,double> double_arguments = args.first;
+                std::map<std::string,std::string> string_arguments  = args.second;
+
+
+
+                for (auto const& arg : double_arguments){
+                    //arg.first -> variable name
+                    //arg.second -> variable value
+                    dvars[arg.first] = arg.second; 
+                }
+
+                for (auto const& arg : string_arguments){
+                    //arg.first -> variable name
+                    //arg.second -> variable value
+                    stvars[arg.first] = arg.second; 
                 }
 
 
