@@ -8,13 +8,18 @@
 #include <map>
 #include <apex_api.hpp>
 #include <regex>
+#include <boost/bind.hpp>
+ #include <boost/spirit/include/phoenix_bind.hpp>
+#include "variables_map.cpp"
 
+#define BOOST_SPIRIT_USE_PHOENIX_V3 1
 
 namespace API
 {
 
 
-    std::map<std::string,double> gv; //global variables
+    std::map<std::string,double> dvars; //global variables
+    std::map<std::string, std::string> stvars; //global variables
 
     std::map<std::string,apex_event_type> event_types;
 
@@ -28,8 +33,45 @@ namespace API
 
 
 
+
     void print_variable(std::string variable){
-        std::cout << "API PRINT:" << gv[variable] << std::endl;
+
+        std::map<std::string,double>::iterator d_it = dvars.find(variable);
+        if ( d_it != dvars.end()){
+            std::cout << "DOUBLE" << std::endl;
+
+            std::cout << "API PRINT double:" << d_it->second << std::endl;
+        }
+        else{
+            std::cout << "API PRINT string: " << stvars[variable] << std::endl;
+        }
+    }
+
+
+
+    void print_string_value(std::string s){
+        std::cout << "API PRINT STRING: " << s << std::endl;
+    }
+
+    std::string strjoin_func(std::string a, std::string b){
+        std::cout << "strjoin " << a+b << std::endl;
+
+        return a + b;
+    }
+
+
+    std::string get_var_or_string(std::string s){
+        std::cout << "get_var_or_string " << s << std::endl;
+
+
+        std::smatch match;
+        std::regex rgx("{([.-}]*)}");
+        if(std::regex_search(s, match, rgx)){
+            return match[1];
+        }
+        else{
+            return stvars[s];
+        }
     }
 
 
@@ -55,23 +97,34 @@ namespace API
 
 
 
-        //qi::rule<Iterator, double> expression, single;
-        //qi::rule<Iterator> assignment;
 
         qi::rule<Iterator, ascii::space_type, std::string()> var = +char_("a-zA-Z");
+        qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
+        //+(char_ - '"');
+        qi::rule<Iterator, ascii::space_type, std::string()> string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+        //checks if "string" or string variable and returns value
+        qi::rule<Iterator, ascii::space_type, std::string()> var_or_string = 
+                                                                            string[_val = _1]
+                                                                            |
+                                                                            var[_val = phx::ref(stvars)[_1]]
+                                                                            ;
+
+
+
+
 /*
         qi::rule<Iterator, double> number = qi::lexeme_d[ (+double_) ];
-        single = double_[_val = _1] | var[_val = phx::ref(gv)[_1]];
+        single = double_[_val = _1] | var[_val = phx::ref(dvars)[_1]];
         expression = (expression >> '+' >> expression) | single;
         expression = single[_val = _1] | 
                      (expression >> '+');// >> expression)[_val = _1 + _2];
         
 
 
-*/
-
-        qi::rule<Iterator, ascii::space_type, double> expression, term, factor, assignment, function ;
-        qi::rule<Iterator, ascii::space_type> probe, statement, print;
+*/  
+        qi::rule<Iterator, ascii::space_type, std::string()> strjoin, str_function, var_func_string;
+        qi::rule<Iterator, ascii::space_type, double> expression, term, factor ;
+        qi::rule<Iterator, ascii::space_type> probe, statement, assignment, print, function;
 
 
 
@@ -90,27 +143,48 @@ namespace API
             ;
 
         factor =
-            var                             [_val = phx::ref(gv)[_1]]
-            |   double_                         [_val = _1]
+            var                             [_val = phx::ref(dvars)[_1]]
+            |   double_                     [_val = _1]
             |   '(' >> expression           [_val = _1] >> ')'
             |   ('-' >> factor              [_val = -_1])
             |   ('+' >> factor              [_val = _1])
             ;
 
-        BOOST_SPIRIT_DEBUG_NODE(expression);
-        BOOST_SPIRIT_DEBUG_NODE(term);
-        BOOST_SPIRIT_DEBUG_NODE(factor);
-        
-        assignment = (var >> '=' >> expression)[phx::ref(gv)[_1] = _2];
 
-        print = "print(" >> var[&print_variable] >> ')'; 
+        //assignment = (var >> '=' >> var)[ boost::phoenix::bind(&f, _1, _2)] | 
+        assignment = 
+                ( "double" >> var >> '=' >> expression)[phx::ref(dvars)[_1] = _2]
+               // | ("string" >> var  >> '=' >> var);
+                | 
+                ("string" >> var >> '=' >> var_func_string)[phx::ref(stvars)[_1] = _2]                 
+                ;
 
-        //function = print;
+        print = ("print(" >> var >> ')')[&print_variable]
+                |
+                ("print(" >> (string|str_function) >> ')')[&print_string_value]; 
 
-        statement = assignment | print;
+
+
+
+
+        strjoin = ("strjoin(" >> var_or_string >> ',' >> var_or_string >> ')')[_val = boost::phoenix::bind(&strjoin_func, _1, _2)];
+
+        str_function = strjoin;
+
+        var_func_string = var_or_string | str_function;
+
+
+        function = print | str_function;
+
+        statement = assignment | function;
 
         probe = statement >> ';' >> *(statement >> ';');
 
+
+
+        BOOST_SPIRIT_DEBUG_NODE(expression);
+        BOOST_SPIRIT_DEBUG_NODE(term);
+        BOOST_SPIRIT_DEBUG_NODE(factor);
 
 
 
@@ -122,8 +196,10 @@ namespace API
         );
 
 
-        if (first != last) // fail if we did not get a full match
+        if (first != last){// fail if we did not get a full match
+            std::cout << "FALHOU\n";
             return false;
+        }
 
 
         return r;
@@ -138,19 +214,19 @@ namespace API
         apex::custom_event(event_types[probe_name], &arguments);
     }
 
-    void register_probe(std::string probe_name, std::vector<std::string> arguments_names, std::string script){
+    void register_probe(std::string probe_name, std::string script){
 
         apex_event_type event_type = apex::register_custom_event(probe_name);
         event_types[probe_name] = event_type;
 
         apex::register_policy(event_type,
-          [arguments_names, script](apex_context const& context)->int{
+          [script](apex_context const& context)->int{
                 //std::cout << context.event_type << std::endl;
                 //vector<MyClass*>& v = *reinterpret_cast<vector<MyClass*> *>(voidPointerName);
                 std::map<std::string,double>& arguments = *reinterpret_cast<std::map<std::string,double>*>(context.data);
                 
                 for (auto const& arg : arguments){
-                    gv[arg.first] = arg.second;
+                    dvars[arg.first] = arg.second;
                 }
 
 
@@ -158,7 +234,6 @@ namespace API
                 parse_probe(script.begin(), script.end());
 
 
-                std::cout << gv["x"] << "\n";
 
 
 
@@ -173,7 +248,6 @@ namespace API
         std::regex rgx("([a-zA-Z0-9]+)\\{([^{}]*)\\}");
         std::smatch match;
 
-        std::vector<std::string> arguments_names = {"i","j","k"};
 
 
         while (std::regex_search(script, match, rgx)){
@@ -184,7 +258,6 @@ namespace API
             if(probe_name == "BEGIN"){
                 parse_probe(probe_script.begin(), probe_script.end());
 
-                std::cout << gv["x"] << "\n";
 
             }
 
@@ -198,14 +271,12 @@ namespace API
                     parse_probe(end_script.begin(), end_script.end());
 
 
-                std::cout << gv["x"] << "\n";
                     
                 });
             }
 
 
-
-            register_probe(probe_name, arguments_names, probe_script);
+            register_probe(probe_name, probe_script);
 
             script = match.suffix();
 
@@ -244,13 +315,13 @@ main()
     std::cout << "Type [q or Q] to quit\n\n";
 
     std::string str;
-    std::map<std::string,double> gv;
+    std::map<std::string,double> dvars;
     while (getline(std::cin, str))
     {
         if (str.empty() || str[0] == 'q' || str[0] == 'Q')
             break;
 
-        if (client::parse_probe(str.begin(), str.end(), gv))
+        if (client::parse_probe(str.begin(), str.end(), dvars))
         {
             std::cout << "-------------------------\n";
             std::cout << "Parsing succeeded\n";
