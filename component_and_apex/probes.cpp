@@ -15,6 +15,8 @@
 
 
 
+
+
 using hpx::performance_counters::performance_counter;
 
 
@@ -23,10 +25,10 @@ std::atomic<std::uint64_t> count(0);
 
 
 
-
 int hpx_main(hpx::program_options::variables_map& vm)
 {
 
+   
 
     std::vector<std::string> arguments_values = {"1","2","3"};
 
@@ -40,11 +42,14 @@ int hpx_main(hpx::program_options::variables_map& vm)
     API::parse_script(script);
 
 
+    hpx::performance_counters::performance_counter counter("/threads{locality#0/total}/count/cumulative");
+
+
 
     API::trigger_probe("abc", {{"a",5}}, {{"s", "ola"}} );
     //API::trigger_probe("xyz", arguments_values);
 
-
+    for (int i = 0; i < 1000; ++i){i  = 0;}
 
     hpx::finalize();
     return 0;

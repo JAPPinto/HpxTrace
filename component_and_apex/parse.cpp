@@ -9,10 +9,14 @@
 #include <apex_api.hpp>
 #include <regex>
 #include <boost/bind.hpp>
- #include <boost/spirit/include/phoenix_bind.hpp>
+#include <boost/spirit/include/phoenix_bind.hpp>
 #include "variables_map.cpp"
+#include "sample_value_event_data.hpp"
 
 #define BOOST_SPIRIT_USE_PHOENIX_V3 1
+
+
+
 
 namespace API
 {
@@ -25,6 +29,8 @@ namespace API
 
 
 
+
+    std::vector<hpx::util::interval_timer*> interval_timers;
 
     namespace qi = boost::spirit::qi;
 
@@ -250,35 +256,114 @@ namespace API
 
                 parse_probe(script.begin(), script.end());
 
-
-
-
-
-
-
             return APEX_NOERROR;
             });
 
     }
 
+
+
+    bool teste(hpx::performance_counters::performance_counter counter, std::string* counter_name){
+
+        int value = counter.get_value<int>().get();
+        std::cout << "READ COUNTER " << *counter_name << " " << value << std::endl;
+        //reading the counter from the API does not tigger APEX_SAMPLE_VALUE event to it has to be triggered manually
+        apex::sample_value(*counter_name, value);
+        return true;
+    }
+
+
+    void register_counter_probe(std::string probe_name, std::string script){
+
+        std::regex rgx("counter::([^:]+)::([0-9]+)");
+        std::smatch match;
+        std::regex_search(probe_name, match, rgx);
+        std::cout << "REGISTER COUNTER " << match[0] << " " << match[1] << " " << match[2] << std::endl; 
+
+        std::string counter_name = match[1];
+        int period = std::stoi(match[2]);
+        std::string* name_ptr = new std::string(counter_name);
+
+
+
+        apex::register_policy(APEX_SAMPLE_VALUE, [&script, name_ptr](apex_context const& context)->int{
+            
+            sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
+                
+            if(*dt.counter_name == *name_ptr){
+                std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
+            }
+
+            //parse_probe(script.begin(), script.end());
+
+            return APEX_NOERROR;
+        });
+
+        hpx::performance_counters::performance_counter counter(counter_name);
+
+
+
+        hpx::util::interval_timer* it = new hpx::util::interval_timer(hpx::util::bind_front(&teste, counter, name_ptr), period); //microsecs  100000 - 0.1s
+
+        it->start();
+
+        interval_timers.push_back(it); 
+
+    }
+
+
+
+
+
     void parse_script(std::string script){
-        std::regex rgx("([a-zA-Z0-9]+)\\{([^{}]*)\\}");
+
+
+
+
+    hpx::util::interval_timer it([]()->bool{
+                std::cout << "olaa" << std::endl; 
+
+
+
+        return true;
+            
+      }, 100000); //0.1s
+    it.start();
+
+
+
+
+
+
+
+
+
+
+
+        std::regex rgx1("([a-zA-Z0-9]+)\\{([^{}]*)\\}");
+        std::regex rgx2("(counter::[^:]+::[0-9]+)\\{([^{}]*)\\}");
+
         std::smatch match;
 
 
 
-        while (std::regex_search(script, match, rgx)){
+        while (std::regex_search(script, match, rgx1) | std::regex_search(script, match, rgx2)){
             std::string probe_name = match[1];
             std::string probe_script = match[2];
             //std::cout << probe_name << "\n";
 
             if(probe_name == "BEGIN"){
+
+                std::cout << "BEGIN " << probe_name << std::endl; 
+
                 parse_probe(probe_script.begin(), probe_script.end());
 
 
             }
 
             else if(probe_name == "END"){
+                std::cout << "END " << probe_name << std::endl; 
+
                 std::string end_script = probe_script;
 
                 hpx::register_shutdown_function(
@@ -292,8 +377,18 @@ namespace API
                 });
             }
 
+            else if(probe_name.find("counter") != -1){
+                std::cout << "COUNTER " << probe_name << std::endl; 
+                register_counter_probe(probe_name, probe_script);
+            }
+            else{
+                
+                std::cout << "ELSE " << probe_name << std::endl; 
 
-            register_probe(probe_name, probe_script);
+                register_probe(probe_name, probe_script);
+
+            }
+
 
             script = match.suffix();
 
