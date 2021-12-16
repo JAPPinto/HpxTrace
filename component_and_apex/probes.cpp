@@ -42,15 +42,13 @@ int hpx_main(hpx::program_options::variables_map& vm)
     API::parse_script(script);
 
 
-    hpx::performance_counters::performance_counter counter("/threads{locality#0/total}/count/cumulative");
 
 
 
     API::trigger_probe("abc", {{"a",5}}, {{"s", "ola"}} );
     //API::trigger_probe("xyz", arguments_values);
 
-    for (int i = 0; i < 1000; ++i){i  = 0;}
-
+    //API::finalize();
     hpx::finalize();
     return 0;
 }

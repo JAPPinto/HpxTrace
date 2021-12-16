@@ -44,8 +44,6 @@ namespace API
 
         std::map<std::string,double>::iterator d_it = dvars.find(variable);
         if ( d_it != dvars.end()){
-            std::cout << "DOUBLE" << std::endl;
-
             std::cout << "API PRINT double:" << d_it->second << std::endl;
         }
         else{
@@ -86,7 +84,7 @@ namespace API
     ///////////////////////////////////////////////////////////////////////////
     //[tutorial_numlist1
     template <typename Iterator>
-    bool parse_probe(Iterator first, Iterator last) {
+    bool parse_probe(Iterator first, Iterator last, std::string counter_name="", double counter_value=0) {
         using qi::double_;
         using qi::char_;
         using qi::_1;
@@ -100,11 +98,13 @@ namespace API
         using ascii::space;
         
 
+        stvars["counter_name"] = counter_name;
+        dvars["counter_value"] = counter_value;
 
 
 
 
-        qi::rule<Iterator, ascii::space_type, std::string()> var = +char_("a-zA-Z");
+        qi::rule<Iterator, ascii::space_type, std::string()> var = +char_("a-zA-Z_");
         qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
         //+(char_ - '"');
         qi::rule<Iterator, ascii::space_type, std::string()> string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
@@ -203,7 +203,7 @@ namespace API
 
 
         if (first != last){// fail if we did not get a full match
-            std::cout << "FALHOU\n";
+            std::cout << "FALHOU " << probe << "\n";
             return false;
         }
 
@@ -286,15 +286,16 @@ namespace API
 
 
 
-        apex::register_policy(APEX_SAMPLE_VALUE, [&script, name_ptr](apex_context const& context)->int{
+        apex::register_policy(APEX_SAMPLE_VALUE, [script, name_ptr](apex_context const& context)->int{
             
             sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
                 
             if(*dt.counter_name == *name_ptr){
                 std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
+
+                parse_probe(script.begin(), script.end(), *name_ptr, dt.counter_value);
             }
 
-            //parse_probe(script.begin(), script.end());
 
             return APEX_NOERROR;
         });
@@ -303,7 +304,8 @@ namespace API
 
 
 
-        hpx::util::interval_timer* it = new hpx::util::interval_timer(hpx::util::bind_front(&teste, counter, name_ptr), period); //microsecs  100000 - 0.1s
+        hpx::util::interval_timer* it = new hpx::util::interval_timer(hpx::util::bind_front(&teste, counter, name_ptr), period
+            , "", true); //microsecs  100000 - 0.1s
 
         it->start();
 
@@ -317,40 +319,17 @@ namespace API
 
     void parse_script(std::string script){
 
-
-
-
-    hpx::util::interval_timer it([]()->bool{
-                std::cout << "olaa" << std::endl; 
-
-
-
-        return true;
-            
-      }, 100000); //0.1s
-    it.start();
-
-
-
-
-
-
-
-
-
-
-
-        std::regex rgx1("([a-zA-Z0-9]+)\\{([^{}]*)\\}");
-        std::regex rgx2("(counter::[^:]+::[0-9]+)\\{([^{}]*)\\}");
+        std::regex rgx1("^[\\n\\r\\s]*([a-zA-Z0-9]+)\\{([^{}]*)\\}");
+        std::regex rgx2("^[\\n\\r\\s]*(counter::[^:]+::[0-9]+)\\{([^{}]*)\\}");
 
         std::smatch match;
 
 
 
-        while (std::regex_search(script, match, rgx1) | std::regex_search(script, match, rgx2)){
+        while (std::regex_search(script, match, rgx1) || std::regex_search(script, match, rgx2)){
             std::string probe_name = match[1];
             std::string probe_script = match[2];
-            //std::cout << probe_name << "\n";
+            std::cout << probe_name << " " << probe_script << "\n";
 
             if(probe_name == "BEGIN"){
 
@@ -406,7 +385,12 @@ namespace API
     }
 
 
-
+    void finalize(){
+        for (auto  element : interval_timers) {
+            std::cout << "finalize\n";
+            element->~interval_timer();
+}
+    }
 
 
 }
