@@ -21,6 +21,9 @@
 namespace API
 {
 
+    typedef boost::variant<double, std::string> Variant;
+
+
 
     std::map<std::string,double> dvars; //global variables
     std::map<std::string, std::string> stvars; //global variables
@@ -79,12 +82,8 @@ namespace API
     }
 
 
-    ///////////////////////////////////////////////////////////////////////////
-    //  Our number list parser
-    ///////////////////////////////////////////////////////////////////////////
-    //[tutorial_numlist1
     template <typename Iterator>
-    bool parse_probe(Iterator first, Iterator last, std::string counter_name="", double counter_value=0) {
+    bool parse_probe(Iterator first, Iterator last) {
         using qi::double_;
         using qi::char_;
         using qi::_1;
@@ -98,8 +97,6 @@ namespace API
         using ascii::space;
         
 
-        stvars["counter_name"] = counter_name;
-        dvars["counter_value"] = counter_value;
 
 
 
@@ -210,7 +207,115 @@ namespace API
 
         return r;
     }
-    //]
+
+    //check if is string literal, double variable or string variable
+    Variant evaluate_string(std::string s){
+        std::cout << "evaluate_string  " << s << "\n";
+        if (*s.begin() == '"' && *s.end() == '='){
+            std::cout << "evaluate_string literal " << s.substr(1, s.size() - 2) << "\n";
+
+            return s.substr(1, s.size() - 2);
+        }
+        auto d_it = dvars.find(s);
+        if ( d_it != dvars.end()){
+            std::cout << "evaluate_string double " << d_it->second << "\n";
+
+            return d_it->second;
+        }
+            std::cout << "evaluate_string string " <<  stvars[s]<< "\n";
+
+        return stvars[s];
+    }
+
+    bool compare(Variant a, std::string op, Variant b){
+        std::cout << "compare " << a  << op  << b << " "<< "\n";
+
+        if(a.type() == typeid(double)) std::cout << "AAAAA\n";
+
+        if(op == "==") return a == b;
+        if(op == "!=") return a != b;
+        if(op == "<")  return a < b;
+        if(op == "<=") return a <= b;
+        if(op == ">")  return a > b;
+        if(op == ">=") return a >= b;
+
+        std::cout << "ERRO COMPARE " << a  << op  << b << " "<< "\n";
+        return false;
+    }
+
+    bool and_operator(bool a, bool b){
+
+        return a && b;
+    }
+
+
+    template <typename Iterator>
+    bool parse_predicate(Iterator first, Iterator last) {
+
+        using qi::double_;
+        using qi::char_;
+        using qi::_1;
+        using qi::_2;
+        using qi::_3;
+        using qi::_val;
+        using qi::phrase_parse;
+        using ascii::space;
+        
+
+        typedef boost::variant<double, std::string> Variant;
+
+
+        qi::rule<Iterator, ascii::space_type, std::string()> var = +char_("a-zA-Z_");
+        qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
+                                   
+        qi::rule<Iterator, ascii::space_type, std::string()> string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+
+
+        qi::rule<Iterator, ascii::space_type, std::string()> op;
+        qi::rule<Iterator, ascii::space_type, bool> predicate, comparison, ands, ors, temp, expression, subexpression;
+        qi::rule<Iterator, ascii::space_type, Variant()> value ;
+
+        value = double_[_val = _1] | string[_val = _1] | var[_val = boost::phoenix::bind(&evaluate_string, _1)];
+
+
+
+        op = +char_("=<>!");
+
+        comparison = (value >> op >> value)[_val = boost::phoenix::bind(&compare, _1, _2, _3)];
+
+
+        temp = comparison | ('(' >> ors >> ')') ;
+
+        bool result;
+
+        ands = temp[_val = _1] >> *("&&" >> temp)[_val &= _1];
+        ors = ands[_val = _1] >> *("||" >> ands)[_val |= _1];
+
+
+        predicate = ('/' >> ors  >> '/')[phx::ref(result) = _1];
+
+
+        bool r = phrase_parse(
+            first,                          /*< start iterator >*/
+            last,                           /*< end iterator >*/
+            predicate,                      /*< the parser >*/
+            space
+        );
+
+
+        if (first != last){// fail if we did not get a full match
+            std::cout << "FALHOU \n";
+            return false;
+        }
+        else{
+            std::cout << "DEU " << result <<  "\n";
+
+        }
+
+
+        return result;
+    }
+    
 
 
     typedef std::pair<std::map<std::string,double>,std::map<std::string,std::string>> arguments;
@@ -225,13 +330,13 @@ namespace API
             apex::custom_event(event_types[probe_name], &args);
     }
 
-    void register_probe(std::string probe_name, std::string script){
+    void register_probe(std::string probe_name, std::string probe_predicate, std::string script){
 
         apex_event_type event_type = apex::register_custom_event(probe_name);
         event_types[probe_name] = event_type;
 
         apex::register_policy(event_type,
-          [script](apex_context const& context)->int{
+          [script, probe_predicate](apex_context const& context)->int{
                 //std::cout << context.event_type << std::endl;
                 //vector<MyClass*>& v = *reinterpret_cast<vector<MyClass*> *>(voidPointerName);
                 arguments& args = *reinterpret_cast<arguments*>(context.data);
@@ -251,10 +356,12 @@ namespace API
                     //arg.second -> variable value
                     stvars[arg.first] = arg.second; 
                 }
+        std::cout << "register_probe " << probe_predicate << std::endl;
+                if(parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+                    parse_probe(script.begin(), script.end());
+                }
+                
 
-
-
-                parse_probe(script.begin(), script.end());
 
             return APEX_NOERROR;
             });
@@ -263,7 +370,7 @@ namespace API
 
 
 
-    bool teste(hpx::performance_counters::performance_counter counter, std::string* counter_name){
+    bool read_counter(hpx::performance_counters::performance_counter counter, std::string* counter_name){
 
         int value = counter.get_value<int>().get();
         std::cout << "READ COUNTER " << *counter_name << " " << value << std::endl;
@@ -273,7 +380,7 @@ namespace API
     }
 
 
-    void register_counter_probe(std::string probe_name, std::string script){
+    void register_counter_probe(std::string probe_name ,std::string probe_predicate, std::string script){
 
         std::regex rgx("counter::([^:]+)::([0-9]+)");
         std::smatch match;
@@ -286,14 +393,19 @@ namespace API
 
 
 
-        apex::register_policy(APEX_SAMPLE_VALUE, [script, name_ptr](apex_context const& context)->int{
+        apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, name_ptr](apex_context const& context)->int{
             
             sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
                 
             if(*dt.counter_name == *name_ptr){
-                std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
 
-                parse_probe(script.begin(), script.end(), *name_ptr, dt.counter_value);
+                stvars["counter_name"] = *name_ptr;
+                dvars["counter_value"] = dt.counter_value;
+
+                if(parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+                    std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
+                    parse_probe(script.begin(), script.end());
+                }
             }
 
 
@@ -304,7 +416,7 @@ namespace API
 
 
 
-        hpx::util::interval_timer* it = new hpx::util::interval_timer(hpx::util::bind_front(&teste, counter, name_ptr), period
+        hpx::util::interval_timer* it = new hpx::util::interval_timer(hpx::util::bind_front(&read_counter, counter, name_ptr), period
             , "", true); //microsecs  100000 - 0.1s
 
         it->start();
@@ -319,8 +431,8 @@ namespace API
 
     void parse_script(std::string script){
 
-        std::regex rgx1("^[\\n\\r\\s]*([a-zA-Z0-9]+)\\{([^{}]*)\\}");
-        std::regex rgx2("^[\\n\\r\\s]*(counter::[^:]+::[0-9]+)\\{([^{}]*)\\}");
+        std::regex rgx1("^[\\n\\r\\s]*([a-zA-Z0-9]+)(/[^/]*/)?\\{([^{}]*)\\}");
+        std::regex rgx2("^[\\n\\r\\s]*(counter::[^:]+::[0-9]+)(/[^/]*/)?\\{([^{}]*)\\}");
 
         std::smatch match;
 
@@ -328,7 +440,8 @@ namespace API
 
         while (std::regex_search(script, match, rgx1) || std::regex_search(script, match, rgx2)){
             std::string probe_name = match[1];
-            std::string probe_script = match[2];
+            std::string probe_predicate = match[2];
+            std::string probe_script = match[3];
             std::cout << probe_name << " " << probe_script << "\n";
 
             if(probe_name == "BEGIN"){
@@ -358,13 +471,13 @@ namespace API
 
             else if(probe_name.find("counter") != -1){
                 std::cout << "COUNTER " << probe_name << std::endl; 
-                register_counter_probe(probe_name, probe_script);
+                register_counter_probe(probe_name, probe_predicate, probe_script);
             }
             else{
                 
                 std::cout << "ELSE " << probe_name << std::endl; 
 
-                register_probe(probe_name, probe_script);
+                register_probe(probe_name, probe_predicate, probe_script);
 
             }
 
