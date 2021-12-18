@@ -311,7 +311,7 @@ namespace API
     bool compare(Variant a, std::string op, Variant b){
         std::cout << "compare " << a  << op  << b << " "<< "\n";
 
-        if(a.type() == typeid(double)) std::cout << "AAAAA\n";
+        //if(a.type() == typeid(double)) std::cout << "AAAAA\n";
 
         if(op == "==") return a == b;
         if(op == "!=") return a != b;
@@ -438,7 +438,7 @@ namespace API
                     stvars[arg.first] = arg.second; 
                 }
         std::cout << "register_probe " << probe_predicate << std::endl;
-                if(parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+                if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
                     parse_probe(script.begin(), script.end());
                 }
                 
@@ -461,9 +461,9 @@ namespace API
     }
 
 
-    void register_counter_probe(std::string probe_name ,std::string probe_predicate, std::string script){
+    void register_counter_create_probe(std::string probe_name ,std::string probe_predicate, std::string script){
 
-        std::regex rgx("counter::([^:]+)::([0-9]+)");
+        std::regex rgx("counter\\-create::([^:]+)::([0-9]+)::");
         std::smatch match;
         std::regex_search(probe_name, match, rgx);
         std::cout << "REGISTER COUNTER " << match[0] << " " << match[1] << " " << match[2] << std::endl; 
@@ -483,7 +483,7 @@ namespace API
                 stvars["counter_name"] = *name_ptr;
                 dvars["counter_value"] = dt.counter_value;
 
-                if(parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+                if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
                     std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
                     parse_probe(script.begin(), script.end());
                 }
@@ -506,20 +506,119 @@ namespace API
 
     }
 
+    void register_counter_probe(std::string probe_name ,std::string probe_predicate, std::string script){
+
+        std::regex rgx("counter::([^:]+)::");
+        std::smatch match;
+        
+
+        std::string counter_name;
 
 
+        //has counter name as argument
+        if(std::regex_search(probe_name, match, rgx)){
+
+            counter_name = match[1];
+
+            std::cout << "REGISTER COUNTER " << match[0] << " " << match[1] << std::endl; 
+
+            std::string* name_ptr = new std::string(counter_name);
+
+
+
+            apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, name_ptr](apex_context const& context)->int{
+                
+                sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
+                
+                if(*dt.counter_name == *name_ptr){
+            std::cout << "AQUI COUNTER " << probe_predicate  << std::endl; 
+
+                    stvars["counter_name"] = *name_ptr;
+                    dvars["counter_value"] = dt.counter_value;
+
+                    if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+                        std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
+                        parse_probe(script.begin(), script.end());
+                    }
+                }
+
+
+                return APEX_NOERROR;
+            });
+        }
+    }
+
+    void register_counter_type_probe(std::string probe_name ,std::string probe_predicate, std::string script){
+
+        std::regex rgx("counter\\-type::([^:]+)::");
+        std::smatch match;
+        
+
+        std::string counter_type;
+
+
+        //has counter name as argument
+        if(std::regex_search(probe_name, match, rgx)){
+
+            counter_type = match[1];
+
+            std::cout << "REGISTER COUNTER " << match[0] << " " << match[1] << std::endl; 
+
+            std::string* type_ptr = new std::string(counter_type);
+
+
+
+            apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, type_ptr](apex_context const& context)->int{
+                
+                sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
+                
+                hpx::performance_counters::counter_path_elements p;
+
+                hpx::performance_counters::counter_status status = 
+                            get_counter_path_elements(*dt.counter_name, p);
+
+                string type_sampled = '/' + p.objectname_ + '/' + p.countername_;
+
+
+                //if sampled counter belongs to the desired type 
+                if(type_sampled.find(*(type_ptr)) != -1){
+                    cout << "PATHS DEU" << endl;
+
+                    stvars["counter_name"] = *dt.counter_name;
+                    dvars["counter_value"] = dt.counter_value;
+
+                    if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+                        std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
+                        parse_probe(script.begin(), script.end());
+                    }
+                }
+
+
+                return APEX_NOERROR;
+            });
+        }
+    }
 
 
     void parse_script(std::string script){
 
         std::regex rgx1("^[\\n\\r\\s]*([a-zA-Z0-9]+)(/[^/]*/)?\\{([^{}]*)\\}");
-        std::regex rgx2("^[\\n\\r\\s]*(counter::[^:]+::[0-9]+)(/[^/]*/)?\\{([^{}]*)\\}");
+        std::regex rgx2("^[\\n\\r\\s]*(counter\\-create::[^:]+::[0-9]+::)(/[^/]*/)?\\{([^{}]*)\\}");
+        std::regex rgx3("^[\\n\\r\\s]*(counter(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
+        std::regex rgx4("^[\\n\\r\\s]*(counter\\-type(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
+
+
 
         std::smatch match;
 
 
 
-        while (std::regex_search(script, match, rgx1) || std::regex_search(script, match, rgx2)){
+        while (std::regex_search(script, match, rgx1) 
+        || std::regex_search(script, match, rgx2) 
+        || std::regex_search(script, match, rgx3) 
+        || std::regex_search(script, match, rgx4)){
+
+
             std::string probe_name = match[1];
             std::string probe_predicate = match[2];
             std::string probe_script = match[3];
@@ -550,6 +649,14 @@ namespace API
                 });
             }
 
+            else if(probe_name.find("counter-create") != -1){
+                std::cout << "COUNTER CREATE " << probe_name << std::endl; 
+                register_counter_create_probe(probe_name, probe_predicate, probe_script);
+            }
+            else if(probe_name.find("counter-type") != -1){
+                std::cout << "COUNTER TYPE " << probe_name << std::endl; 
+                register_counter_type_probe(probe_name, probe_predicate, probe_script);
+            }
             else if(probe_name.find("counter") != -1){
                 std::cout << "COUNTER " << probe_name << std::endl; 
                 register_counter_probe(probe_name, probe_predicate, probe_script);
