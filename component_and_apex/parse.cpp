@@ -15,13 +15,17 @@
 
 #define BOOST_SPIRIT_USE_PHOENIX_V3 1
 
-
+using namespace std;
 
 
 namespace API
 {
 
     typedef boost::variant<double, std::string> Variant;
+
+    #define VARIANT_DOUBLE 0
+    #define VARIANT_STRING 1
+
 
 
 
@@ -40,7 +44,56 @@ namespace API
     namespace ascii = boost::spirit::ascii;
     namespace phx = boost::phoenix;
 
+    #define NON_EXISTANT -1
+    #define DOUBLE_VAR 0
+    #define STRING_VAR 1
 
+    int check_type(string name){
+        auto d_it = dvars.find(name);
+        if ( d_it != dvars.end()){
+            return DOUBLE_VAR;
+        }
+        auto st_it = stvars.find(name);
+        if ( st_it != stvars.end()){
+            return STRING_VAR;
+        }
+        return NON_EXISTANT;
+    }
+
+    bool is_double_variable(string name){
+        auto d_it = dvars.find(name);
+        if ( d_it != dvars.end()){
+            return true;
+        }
+        return false;
+    }
+
+    //check if is string literal, double variable or string variable
+    Variant evaluate_string(std::string s){
+        std::cout << "evaluate_string  " << s << "\n";
+
+
+
+            for(auto it = dvars.cbegin(); it != dvars.cend(); ++it)
+            {
+                std::cout << "double " << it->first << " " << it->second << "\n";
+            }
+            cout << endl;
+            for(auto it = stvars.cbegin(); it != stvars.cend(); ++it)
+            {
+                std::cout << "string " << it->first << " " << it->second << "\n";
+            }
+
+        auto d_it = dvars.find(s);
+        if ( d_it != dvars.end()){
+            std::cout << "evaluate_string double " << d_it->second << "\n";
+
+            return d_it->second;
+        }
+            std::cout << "evaluate_string string " <<  stvars[s]<< "\n";
+
+        return stvars[s];
+    }
 
 
     void print_variable(std::string variable){
@@ -54,16 +107,42 @@ namespace API
         }
     }
 
+    void print_value(Variant v){
+        std::cout << "API PRINT:" << v << std::endl;
+    }
+
+
+/*
+        if(std::is_arithmetic(v.type())){
+            std::cout << "API PRINT double:" << boost::get<double>(v) << std::endl;
+            return;
+        }
+
+        std::map<std::string,double>::iterator d_it = dvars.find(variable);
+        if ( d_it != dvars.end()){
+            std::cout << "API PRINT double:" << d_it->second << std::endl;
+
+        }
+        else{
+            std::cout << "API PRINT string: " << stvars[variable] << std::endl;
+        }
+    }*/
+
+
+
 
 
     void print_string_value(std::string s){
         std::cout << "API PRINT STRING: " << s << std::endl;
     }
 
-    std::string strjoin_func(std::string a, std::string b){
-        std::cout << "strjoin " << a+b << std::endl;
+    std::string strjoin_func(Variant a, Variant b){
+        if(a.type() != typeid(string) || b.type() != typeid(string)){
+            throw "strjoin: invalid argument "; 
+        }
+        std::cout << "strjoin " << boost::get<string>(a)+boost::get<string>(b) << std::endl;
 
-        return a + b;
+        return boost::get<string>(a)+boost::get<string>(b);
     }
 
 
@@ -81,6 +160,28 @@ namespace API
         }
     }
 
+    void store_variable(string name, Variant value){
+        std::cout << "store_variable " << name << value.which()  << std::endl;
+
+
+        if(value.which() == VARIANT_DOUBLE){
+            if(check_type(name) == STRING_VAR) 
+                throw  name + " variable already exists as a string";
+            std::cout << "store_variable double " << name << boost::get<double>(value)  << std::endl;
+
+            dvars[name] = boost::get<double>(value);
+        }
+        if(value.which() == VARIANT_STRING){
+            if(check_type(name) == DOUBLE_VAR) 
+                throw  name + " variable already exists as a double";
+            std::cout << "store_variable string " << name << boost::get<string>(value)  << std::endl;
+
+            stvars[name] = boost::get<string>(value);
+
+        }
+    }
+
+
 
     template <typename Iterator>
     bool parse_probe(Iterator first, Iterator last) {
@@ -89,6 +190,7 @@ namespace API
         using qi::_1;
         using qi::_2;
         using qi::_val;
+        using qi::_pass;
 
         //using qi::string_;
 
@@ -114,22 +216,21 @@ namespace API
 
 
 
-
-/*
-        qi::rule<Iterator, double> number = qi::lexeme_d[ (+double_) ];
-        single = double_[_val = _1] | var[_val = phx::ref(dvars)[_1]];
-        expression = (expression >> '+' >> expression) | single;
-        expression = single[_val = _1] | 
-                     (expression >> '+');// >> expression)[_val = _1 + _2];
-        
-
-
-*/  
         qi::rule<Iterator, ascii::space_type, std::string()> strjoin, str_function, var_func_string;
         qi::rule<Iterator, ascii::space_type, double> expression, term, factor ;
         qi::rule<Iterator, ascii::space_type> probe, statement, assignment, print, function;
 
+        qi::rule<Iterator, ascii::space_type, Variant()> value ;
 
+        value = double_[_val = _1] 
+              | string[_val = _1] 
+              | str_function[_val = _1]
+              | expression [_val = _1]
+              | var[_val = boost::phoenix::bind(&evaluate_string, _1)];
+
+
+              //a = var
+              //a = var + 3
 
         expression =
             term                            [_val = _1]
@@ -146,7 +247,7 @@ namespace API
             ;
 
         factor =
-            var                             [_val = phx::ref(dvars)[_1]]
+            (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(dvars)[_1]]
             |   double_                     [_val = _1]
             |   '(' >> expression           [_val = _1] >> ')'
             |   ('-' >> factor              [_val = -_1])
@@ -155,22 +256,20 @@ namespace API
 
 
         //assignment = (var >> '=' >> var)[ boost::phoenix::bind(&f, _1, _2)] | 
-        assignment = 
+    /*    assignment = 
                 ( "double" >> var >> '=' >> expression)[phx::ref(dvars)[_1] = _2]
                // | ("string" >> var  >> '=' >> var);
                 | 
                 ("string" >> var >> '=' >> var_func_string)[phx::ref(stvars)[_1] = _2]                 
                 ;
+*/
 
-        print = ("print(" >> var >> ')')[&print_variable]
-                |
-                ("print(" >> (string|str_function) >> ')')[&print_string_value]; 
+        assignment = (var >> '=' >> value)[ boost::phoenix::bind(&store_variable, _1, _2)];  
 
-
-
+        print = ("print(" >> value >> ')')[boost::phoenix::bind(&print_value, _1)];
 
 
-        strjoin = ("strjoin(" >> var_or_string >> ',' >> var_or_string >> ')')[_val = boost::phoenix::bind(&strjoin_func, _1, _2)];
+        strjoin = ("strjoin(" >> value >> ',' >> value >> ')')[_val = boost::phoenix::bind(&strjoin_func, _1, _2)];
 
         str_function = strjoin;
 
@@ -208,24 +307,6 @@ namespace API
         return r;
     }
 
-    //check if is string literal, double variable or string variable
-    Variant evaluate_string(std::string s){
-        std::cout << "evaluate_string  " << s << "\n";
-        if (*s.begin() == '"' && *s.end() == '='){
-            std::cout << "evaluate_string literal " << s.substr(1, s.size() - 2) << "\n";
-
-            return s.substr(1, s.size() - 2);
-        }
-        auto d_it = dvars.find(s);
-        if ( d_it != dvars.end()){
-            std::cout << "evaluate_string double " << d_it->second << "\n";
-
-            return d_it->second;
-        }
-            std::cout << "evaluate_string string " <<  stvars[s]<< "\n";
-
-        return stvars[s];
-    }
 
     bool compare(Variant a, std::string op, Variant b){
         std::cout << "compare " << a  << op  << b << " "<< "\n";
