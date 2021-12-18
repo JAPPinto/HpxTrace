@@ -74,15 +74,15 @@ namespace API
 
 
 
-            for(auto it = dvars.cbegin(); it != dvars.cend(); ++it)
-            {
-                std::cout << "double " << it->first << " " << it->second << "\n";
-            }
-            cout << endl;
-            for(auto it = stvars.cbegin(); it != stvars.cend(); ++it)
-            {
-                std::cout << "string " << it->first << " " << it->second << "\n";
-            }
+        for(auto it = dvars.cbegin(); it != dvars.cend(); ++it)
+        {
+            std::cout << "double " << it->first << " " << it->second << "\n";
+        }
+        cout << endl;
+        for(auto it = stvars.cbegin(); it != stvars.cend(); ++it)
+        {
+            std::cout << "string " << it->first << " " << it->second << "\n";
+        }
 
         auto d_it = dvars.find(s);
         if ( d_it != dvars.end()){
@@ -461,6 +461,37 @@ namespace API
     }
 
 
+    void fill_counter_variables(string name, double value){
+        stvars["counter_name"] = name;
+        dvars["counter_value"] = value;
+
+        hpx::performance_counters::counter_path_elements p;
+
+        hpx::performance_counters::counter_status status = 
+                    get_counter_path_elements(name, p);
+
+        stvars["counter_type"] = '/' + p.objectname_ + '/' + p.countername_;
+        stvars["counter_parameters"] = p.parameters_;
+        stvars["counter_parent_instance_name"] = p.parentinstancename_;
+        stvars["counter_parent_instance_index"] = p.parentinstanceindex_;
+        stvars["counter_instance_name"] = p.instancename_;
+        stvars["counter_instance_index"] = p.instanceindex_;
+    }
+
+    void erase_counter_variables(){
+        dvars.erase("counter_value");
+        stvars.erase("counter_name");
+
+        stvars.erase("counter_type");
+        stvars.erase("counter_parameters");
+        stvars.erase("counter_parent_instance_name");
+        stvars.erase("counter_parent_instance_index");
+        stvars.erase("counter_instance_name");
+        stvars.erase("counter_instance_index");
+
+    }
+
+
     void register_counter_create_probe(std::string probe_name ,std::string probe_predicate, std::string script){
 
         std::regex rgx("counter\\-create::([^:]+)::([0-9]+)::");
@@ -480,13 +511,14 @@ namespace API
                 
             if(*dt.counter_name == *name_ptr){
 
-                stvars["counter_name"] = *name_ptr;
-                dvars["counter_value"] = dt.counter_value;
+                fill_counter_variables(*name_ptr, dt.counter_value);
 
                 if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
                     std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
                     parse_probe(script.begin(), script.end());
                 }
+
+                erase_counter_variables();
             }
 
 
@@ -533,13 +565,13 @@ namespace API
                 if(*dt.counter_name == *name_ptr){
             std::cout << "AQUI COUNTER " << probe_predicate  << std::endl; 
 
-                    stvars["counter_name"] = *name_ptr;
-                    dvars["counter_value"] = dt.counter_value;
+                    fill_counter_variables(*name_ptr, dt.counter_value);
 
                     if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
                         std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
                         parse_probe(script.begin(), script.end());
                     }
+                    erase_counter_variables();
                 }
 
 
@@ -584,13 +616,15 @@ namespace API
                 if(type_sampled.find(*(type_ptr)) != -1){
                     cout << "PATHS DEU" << endl;
 
-                    stvars["counter_name"] = *dt.counter_name;
-                    dvars["counter_value"] = dt.counter_value;
+
+                    fill_counter_variables(*dt.counter_name, dt.counter_value);
 
                     if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
                         std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
                         parse_probe(script.begin(), script.end());
                     }
+
+                    erase_counter_variables();
                 }
 
 
