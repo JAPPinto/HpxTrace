@@ -508,6 +508,7 @@ namespace API
         apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, name_ptr](apex_context const& context)->int{
             
             sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
+                    std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
                 
             if(*dt.counter_name == *name_ptr){
 
@@ -578,6 +579,9 @@ namespace API
                 return APEX_NOERROR;
             });
         }
+        else{
+
+        }
     }
 
     void register_counter_type_probe(std::string probe_name ,std::string probe_predicate, std::string script){
@@ -633,13 +637,50 @@ namespace API
         }
     }
 
+    void register_proc_probe(std::string probe_name ,std::string probe_predicate, std::string script){
+
+        std::regex rgx("proc::([^:]*)::");
+        std::smatch match;
+        
+        string filter = "";
+
+        if(std::regex_search(probe_name, match, rgx)){
+            filter = string(match[1]);
+        }
+
+        std::string counter_name;
+
+ std::cout << "APEX_SAMPLE_VALUE filter" << filter << endl;
+
+
+        apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, filter](apex_context const& context)->int{
+            
+            sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
+            if((*dt.counter_name).find(filter) != -1){
+
+                //fill_counter_variables(*name_ptr, dt.counter_value);
+
+                if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+                    std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
+                    parse_probe(script.begin(), script.end());
+                }
+                //erase_counter_variables();
+            }
+
+
+            return APEX_NOERROR;
+        });
+        
+    }
 
     void parse_script(std::string script){
 
-        std::regex rgx1("^[\\n\\r\\s]*([a-zA-Z0-9]+)(/[^/]*/)?\\{([^{}]*)\\}");
-        std::regex rgx2("^[\\n\\r\\s]*(counter\\-create::[^:]+::[0-9]+::)(/[^/]*/)?\\{([^{}]*)\\}");
-        std::regex rgx3("^[\\n\\r\\s]*(counter(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
-        std::regex rgx4("^[\\n\\r\\s]*(counter\\-type(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
+        std::regex rgx_cc("^[\\n\\r\\s]*(counter\\-create::[^:]+::[0-9]+::)(/[^/]*/)?\\{([^{}]*)\\}");
+        std::regex rgx_c("^[\\n\\r\\s]*(counter(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
+        std::regex rgx_ct("^[\\n\\r\\s]*(counter\\-type(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
+        std::regex rgx_proc("^[\\n\\r\\s]*(proc(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
+        std::regex rgx_user("^[\\n\\r\\s]*([a-zA-Z0-9]+)(/[^/]*/)?\\{([^{}]*)\\}");
+
 
 
 
@@ -647,10 +688,11 @@ namespace API
 
 
 
-        while (std::regex_search(script, match, rgx1) 
-        || std::regex_search(script, match, rgx2) 
-        || std::regex_search(script, match, rgx3) 
-        || std::regex_search(script, match, rgx4)){
+        while (std::regex_search(script, match, rgx_cc) 
+        || std::regex_search(script, match, rgx_c) 
+        || std::regex_search(script, match, rgx_ct)
+        || std::regex_search(script, match, rgx_proc)  
+        || std::regex_search(script, match, rgx_user)){
 
 
             std::string probe_name = match[1];
@@ -694,6 +736,10 @@ namespace API
             else if(probe_name.find("counter") != -1){
                 std::cout << "COUNTER " << probe_name << std::endl; 
                 register_counter_probe(probe_name, probe_predicate, probe_script);
+            }
+            else if(probe_name.find("proc") != -1){
+                std::cout << "PROC " << probe_name << std::endl; 
+                register_proc_probe(probe_name, probe_predicate, probe_script);
             }
             else{
                 
