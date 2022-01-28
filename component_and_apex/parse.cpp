@@ -61,8 +61,16 @@ namespace API
     }
 
     bool is_double_variable(string name){
-        auto d_it = dvars.find(name);
-        if ( d_it != dvars.end()){
+        auto it = dvars.find(name);
+        if ( it != dvars.end()){
+            return true;
+        }
+        return false;
+    }
+
+        bool is_string_variable(string name){
+        auto it = stvars.find(name);
+        if ( it != stvars.end()){
             return true;
         }
         return false;
@@ -200,39 +208,37 @@ namespace API
         
 
 
+        typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
+        typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
+        typedef qi::rule<Iterator, ascii::space_type> Rule;
 
 
 
-        qi::rule<Iterator, ascii::space_type, std::string()> var = +char_("a-zA-Z_");
+
+
+
+
+        RuleString var = +char_("a-zA-Z_");
         qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
-        //+(char_ - '"');
-        qi::rule<Iterator, ascii::space_type, std::string()> string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
-        //checks if "string" or string variable and returns value
-        qi::rule<Iterator, ascii::space_type, std::string()> var_or_string = 
-                                                                            string[_val = _1]
-                                                                            |
-                                                                            var[_val = phx::ref(stvars)[_1]]
-                                                                            ;
+        RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+
+        RuleString string_value = 
+            string[_val = _1] 
+           // | str_function[_val = _1]
+            | (var[_pass = boost::phoenix::bind(&is_string_variable, _1)])[_val = phx::ref(stvars)[_1]]; //STRING VAR
+
+        RuleString string_expression = 
+            string_value                            [_val = _1]
+            >> *('+' >> string_value                [_val = _val + _1]);
 
 
 
-        qi::rule<Iterator, ascii::space_type, std::string()> strjoin, str_function, var_func_string;
-        qi::rule<Iterator, ascii::space_type, double> expression, term, factor ;
-        qi::rule<Iterator, ascii::space_type> probe, statement, assignment, print, function;
-
-        qi::rule<Iterator, ascii::space_type, Variant()> value ;
-
-        value = double_[_val = _1] 
-              | string[_val = _1] 
-              | str_function[_val = _1]
-              | expression [_val = _1]
-              | var[_val = boost::phoenix::bind(&evaluate_string, _1)];
 
 
-              //a = var
-              //a = var + 3
 
-        expression =
+        RuleDouble arithmetic_expression, term, factor;
+
+        arithmetic_expression =
             term                            [_val = _1]
             >> *(   ('+' >> term            [_val = _val + _1])
                 |   ('-' >> term            [_val = _val - _1])
@@ -247,46 +253,41 @@ namespace API
             ;
 
         factor =
+            //numeric_value causes a loop so it can't be used here
             (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(dvars)[_1]]
-            |   double_                     [_val = _1]
-            |   '(' >> expression           [_val = _1] >> ')'
-            |   ('-' >> factor              [_val = -_1])
-            |   ('+' >> factor              [_val = _1])
+            |   double_                      [_val = _1]
+            |   '(' >> arithmetic_expression [_val = _1] >> ')'
+            |   ('-' >> factor               [_val = -_1])
+            |   ('+' >> factor               [_val = _1])
             ;
 
 
-        //assignment = (var >> '=' >> var)[ boost::phoenix::bind(&f, _1, _2)] | 
-    /*    assignment = 
-                ( "double" >> var >> '=' >> expression)[phx::ref(dvars)[_1] = _2]
-               // | ("string" >> var  >> '=' >> var);
-                | 
-                ("string" >> var >> '=' >> var_func_string)[phx::ref(stvars)[_1] = _2]                 
-                ;
-*/
-
-        assignment = (var >> '=' >> value)[ boost::phoenix::bind(&store_variable, _1, _2)];  
-
-        print = ("print(" >> value >> ')')[boost::phoenix::bind(&print_value, _1)];
-
-
-        strjoin = ("strjoin(" >> value >> ',' >> value >> ')')[_val = boost::phoenix::bind(&strjoin_func, _1, _2)];
-
-        str_function = strjoin;
-
-        var_func_string = var_or_string | str_function;
-
-
-        function = print | str_function;
-
-        statement = assignment | function;
-
-        probe = statement >> ';' >> *(statement >> ';');
+        qi::rule<Iterator, ascii::space_type, Variant()> value ;
+        value = arithmetic_expression[_val = _1] 
+              | string_expression[_val = _1];
 
 
 
-        BOOST_SPIRIT_DEBUG_NODE(expression);
-        BOOST_SPIRIT_DEBUG_NODE(term);
-        BOOST_SPIRIT_DEBUG_NODE(factor);
+
+
+        Rule assignment = (var >> '=' >> arithmetic_expression)[phx::ref(dvars)[_1] = _2]
+                    | (var >> '=' >> string_expression)[phx::ref(stvars)[_1] = _2];  
+
+
+
+        Rule print = ("print(" >> value >> ')')[boost::phoenix::bind(&print_value, _1)];
+
+
+        //strjoin = ("strjoin(" >> value >> ',' >> value >> ')')[_val = boost::phoenix::bind(&strjoin_func, _1, _2)];
+
+
+        Rule function = print;
+
+        Rule statement = assignment | function;
+
+        Rule probe = statement >> ';' >> *(statement >> ';');
+
+
 
 
 
