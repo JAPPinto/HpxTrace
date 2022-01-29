@@ -119,6 +119,17 @@ namespace API
         std::cout << "API PRINT:" << v << std::endl;
     }
 
+    std::string to_string(double d){
+        std::string str = std::to_string (d);
+        str.erase(str.find_last_not_of('0') + 1, std::string::npos);
+        str.erase(str.find_last_not_of('.') + 1, std::string::npos);
+        return str;
+    }
+
+    double to_double(std::string s){
+        return std::stod(s);
+    }
+
 
 /*
         if(std::is_arithmetic(v.type())){
@@ -221,10 +232,11 @@ namespace API
         RuleString var = +char_("a-zA-Z_");
         qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
         RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+        RuleString string_function;
 
         RuleString string_value = 
             string[_val = _1] 
-           // | str_function[_val = _1]
+            | string_function[_val = _1]
             | (var[_pass = boost::phoenix::bind(&is_string_variable, _1)])[_val = phx::ref(stvars)[_1]]; //STRING VAR
 
         RuleString string_expression = 
@@ -233,10 +245,7 @@ namespace API
 
 
 
-
-
-
-        RuleDouble arithmetic_expression, term, factor;
+        RuleDouble arithmetic_expression, term, factor, double_function;
 
         arithmetic_expression =
             term                            [_val = _1]
@@ -253,8 +262,8 @@ namespace API
             ;
 
         factor =
-            //numeric_value causes a loop so it can't be used here
-            (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(dvars)[_1]]
+                double_function              [_val = _1]
+            |   (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(dvars)[_1]]
             |   double_                      [_val = _1]
             |   '(' >> arithmetic_expression [_val = _1] >> ')'
             |   ('-' >> factor               [_val = -_1])
@@ -279,15 +288,18 @@ namespace API
 
 
         //strjoin = ("strjoin(" >> value >> ',' >> value >> ')')[_val = boost::phoenix::bind(&strjoin_func, _1, _2)];
+        
+        RuleString str = ("str(" >> arithmetic_expression >> ')')[_val = boost::phoenix::bind(&to_string, _1)];
+        string_function = str;
 
+        RuleDouble dbl = ("dbl(" >> string_expression >> ')')[_val = boost::phoenix::bind(&to_double, _1)];
+        double_function = dbl;
 
         Rule function = print;
 
         Rule statement = assignment | function;
 
         Rule probe = statement >> ';' >> *(statement >> ';');
-
-
 
 
 
