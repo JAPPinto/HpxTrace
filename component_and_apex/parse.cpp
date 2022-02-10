@@ -17,6 +17,8 @@
 
 using namespace std;
 
+//#include "grammar.cpp"
+
 
 namespace API
 {
@@ -226,26 +228,27 @@ namespace API
 
 
 
-
-
-
-        RuleString var = +char_("a-zA-Z_");
+        //String rules
         qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
         RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+        //Var rules
+        RuleString var = (char_("a-zA-Z_") >> *char_("a-zA-Z0-9_"));
+        RuleString string_var = (var[_pass = boost::phoenix::bind(&is_string_variable, _1)])[_val = phx::ref(stvars)[_1]];
+        RuleDouble double_var = (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(dvars)[_1]];
+        //Function rules
         RuleString string_function;
+        RuleDouble double_function;
+        //Values rules
+        RuleString string_value = string | string_function | string_var;
+        RuleDouble double_value = double_ | double_function | double_var;
 
-        RuleString string_value = 
-            string[_val = _1] 
-            | string_function[_val = _1]
-            | (var[_pass = boost::phoenix::bind(&is_string_variable, _1)])[_val = phx::ref(stvars)[_1]]; //STRING VAR
+        //Expression rules
 
         RuleString string_expression = 
             string_value                            [_val = _1]
             >> *('+' >> string_value                [_val = _val + _1]);
 
-
-
-        RuleDouble arithmetic_expression, term, factor, double_function;
+        RuleDouble arithmetic_expression, term, factor;
 
         arithmetic_expression =
             term                            [_val = _1]
@@ -262,9 +265,7 @@ namespace API
             ;
 
         factor =
-                double_function              [_val = _1]
-            |   (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(dvars)[_1]]
-            |   double_                      [_val = _1]
+                double_value                 [_val = _1]
             |   '(' >> arithmetic_expression [_val = _1] >> ')'
             |   ('-' >> factor               [_val = -_1])
             |   ('+' >> factor               [_val = _1])
@@ -297,7 +298,7 @@ namespace API
 
         Rule function = print;
 
-        Rule statement = assignment | function;
+        Rule statement = assignment | print;
 
         Rule probe = statement >> ';' >> *(statement >> ';');
 
@@ -350,39 +351,98 @@ namespace API
         using qi::char_;
         using qi::_1;
         using qi::_2;
-        using qi::_3;
+        using qi::_3; 
         using qi::_val;
+        using qi::_pass;
+
+        //using qi::string_;
+
+
         using qi::phrase_parse;
         using ascii::space;
         
 
-        typedef boost::variant<double, std::string> Variant;
+
+        typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
+        typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
+        typedef qi::rule<Iterator, ascii::space_type> Rule;
 
 
-        qi::rule<Iterator, ascii::space_type, std::string()> var = +char_("a-zA-Z_");
+
+
+        //String rules
         qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
-                                   
-        qi::rule<Iterator, ascii::space_type, std::string()> string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+        RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+        //Var rules
+        RuleString var = (char_("a-zA-Z_") >> *char_("a-zA-Z0-9_"));
+        RuleString string_var = (var[_pass = boost::phoenix::bind(&is_string_variable, _1)])[_val = phx::ref(stvars)[_1]];
+        RuleDouble double_var = (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(dvars)[_1]];
+        //Function rules
+        RuleString string_function;
+        RuleDouble double_function;
+        //Values rules
+        RuleString string_value = string | string_function | string_var;
+        RuleDouble double_value = double_ | double_function | double_var;
 
+        //Expression rules
+
+        RuleString string_expression = 
+            string_value                            [_val = _1]
+            >> *('+' >> string_value                [_val = _val + _1]);
+
+        RuleDouble arithmetic_expression, term, factor;
+
+        arithmetic_expression =
+            term                            [_val = _1]
+            >> *(   ('+' >> term            [_val = _val + _1])
+                |   ('-' >> term            [_val = _val - _1])
+                )
+            ;
+
+        term =
+            factor                          [_val = _1]
+            >> *(   ('*' >> factor          [_val = _val * _1])
+                |   ('/' >> factor          [_val = _val / _1])
+                )
+            ;
+
+        factor =
+                double_value                 [_val = _1]
+            |   '(' >> arithmetic_expression [_val = _1] >> ')'
+            |   ('-' >> factor               [_val = -_1])
+            |   ('+' >> factor               [_val = _1])
+            ;
+
+
+        qi::rule<Iterator, ascii::space_type, Variant()> value ;
+        value = arithmetic_expression[_val = _1] 
+              | string_expression[_val = _1];
 
         qi::rule<Iterator, ascii::space_type, std::string()> op;
-        qi::rule<Iterator, ascii::space_type, bool> predicate, comparison, ands, ors, temp, expression, subexpression;
-        qi::rule<Iterator, ascii::space_type, Variant()> value ;
-
-        value = double_[_val = _1] | string[_val = _1] | var[_val = boost::phoenix::bind(&evaluate_string, _1)];
-
+        qi::rule<Iterator, ascii::space_type, bool> predicate, comparison, ands, ors, parentheses, expression, subexpression;
 
 
         op = +char_("=<>!");
 
-        comparison = (value >> op >> value)[_val = boost::phoenix::bind(&compare, _1, _2, _3)];
+        //comparison = (value >> op >> value)[_val = boost::phoenix::bind(&compare, _1, _2, _3)];
+        comparison = (string_expression >> "==" >> string_expression)[_val = _1 == _2]
+                   | (string_expression >> "!=" >> string_expression)[_val = _1 != _2]
+                   | (arithmetic_expression >> "==" >> arithmetic_expression)[_val = _1 == _2]
+                   | (arithmetic_expression >> "!=" >> arithmetic_expression)[_val = _1 != _2]
+                   | (arithmetic_expression >> "<"  >> arithmetic_expression)[_val = _1 <  _2]
+                   | (arithmetic_expression >> "<=" >> arithmetic_expression)[_val = _1 <= _2]
+                   | (arithmetic_expression >> ">"  >> arithmetic_expression)[_val = _1 >  _2]
+                   | (arithmetic_expression >> ">=" >> arithmetic_expression)[_val = _1 >= _2];
 
 
-        temp = comparison | ('(' >> ors >> ')') ;
+
 
         bool result;
 
-        ands = temp[_val = _1] >> *("&&" >> temp)[_val &= _1];
+        parentheses = comparison | ('(' >> ors >> ')') ;
+
+
+        ands = parentheses[_val = _1] >> *("&&" >> parentheses)[_val &= _1];
         ors = ands[_val = _1] >> *("||" >> ands)[_val |= _1];
 
 
@@ -669,6 +729,7 @@ namespace API
         apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, filter](apex_context const& context)->int{
             
             sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
+            
             if((*dt.counter_name).find(filter) != -1){
 
                 //fill_counter_variables(*name_ptr, dt.counter_value);
