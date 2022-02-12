@@ -10,8 +10,11 @@
 #include <regex>
 #include <boost/bind.hpp>
 #include <boost/spirit/include/phoenix_bind.hpp>
+#include <boost/spirit/include/qi_lit.hpp>
 #include "variables_map.cpp"
 #include "sample_value_event_data.hpp"
+#include "Aggregation.cpp"
+
 
 #define BOOST_SPIRIT_USE_PHOENIX_V3 1
 
@@ -24,6 +27,7 @@ namespace API
 {
 
     typedef boost::variant<double, std::string> Variant;
+    //std::map<std::string, std::map<std::vector<boost::variant<double, std::string>>, double>> aggvars
 
     #define VARIANT_DOUBLE 0
     #define VARIANT_STRING 1
@@ -33,6 +37,10 @@ namespace API
 
     std::map<std::string,double> dvars; //global variables
     std::map<std::string, std::string> stvars; //global variables
+    //std::map<std::string, std::map<Variant,double>> aggvars; //aggregation variables
+    std::map<std::string, Aggregation> aggvars; //aggregation variables
+
+
 
     std::map<std::string,apex_event_type> event_types;
 
@@ -202,6 +210,21 @@ namespace API
         }
     }
 
+    void aggregate(std::string name, std::vector<Variant> keys, std::string function, double value){
+        //Aggregation& agg = aggvars[name];
+        //agg.aggregate(key, function, value);
+
+
+
+        aggvars[name].aggregate(keys, function, value);
+
+//aggvars[name] = agg;
+
+        //verifica se existe
+        //verifica tipo
+        //efetua aggregação
+    }
+
 
 
     template <typename Iterator>
@@ -210,6 +233,7 @@ namespace API
         using qi::char_;
         using qi::_1;
         using qi::_2;
+        using qi::_3;
         using qi::_val;
         using qi::_pass;
 
@@ -298,7 +322,31 @@ namespace API
 
         Rule function = print;
 
-        Rule statement = assignment | print;
+    //void aggregate(std::string name, Variant key, std::string operation, double value){
+
+        qi::rule<Iterator, ascii::space_type, std::vector<Variant>> keys = value % ',';
+         
+
+        Rule aggregation = 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "count()")
+            [boost::phoenix::bind(&aggregate, _1, _2, "count", 0)]
+            | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "sum" >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&aggregate, _1, _2, "sum", _3)]
+            | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "avg" >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&aggregate, _1, _2, "avg", _3)]
+            | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "min" >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&aggregate, _1, _2, "min", _3)]
+            | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "max" >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&aggregate, _1, _2, "max", _3)];
+//        Rule aggregation = ('@' >> var >> "=" >> "sum(" >> arithmetic_expression >> ")")[phx::ref(aggvars)[_1][0]++];
+
+
+
+
+
+
+
+        Rule statement = assignment | print | aggregation;
 
         Rule probe = statement >> ';' >> *(statement >> ';');
 
@@ -830,7 +878,18 @@ namespace API
 
 
 
-
+        hpx::register_shutdown_function(
+            []()->void{
+         
+                for (auto agg : aggvars){
+                    //arg.first -> aggregation name
+                    //arg.second -> aggregation object
+                    std::cout << "Aggregation " << agg.first << ":" << std::endl;
+                    agg.second.print();
+                }
+                           
+            }
+        );
 
 
 
