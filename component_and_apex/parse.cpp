@@ -38,7 +38,7 @@ namespace API
     std::map<std::string,double> dvars; //global variables
     std::map<std::string, std::string> stvars; //global variables
     //std::map<std::string, std::map<Variant,double>> aggvars; //aggregation variables
-    std::map<std::string, Aggregation> aggvars; //aggregation variables
+    std::map<std::string, Aggregation*> aggvars; //aggregation variables
 
 
 
@@ -211,18 +211,29 @@ namespace API
     }
 
     void aggregate(std::string name, std::vector<Variant> keys, std::string function, double value){
-        //Aggregation& agg = aggvars[name];
-        //agg.aggregate(key, function, value);
+        auto it = aggvars.find(name);
+        if ( it == aggvars.end()){
+            cout << "AAAA";
+            Aggregation* g = new Aggregation();
+            g->aggregate(keys, function, value);
+            aggvars[name] = g;
+        }
+        else{
+            aggvars[name]->aggregate(keys, function, value);
+        }
+    }
 
+    void quantize(std::string name, std::vector<Variant> keys, std::string function, double value){
 
-
-        aggvars[name].aggregate(keys, function, value);
-
-//aggvars[name] = agg;
-
-        //verifica se existe
-        //verifica tipo
-        //efetua aggregação
+        auto it = aggvars.find(name);
+        if ( it == aggvars.end()){
+            Quantization* q = new Quantization();
+            q->aggregate(keys, function, value);
+            aggvars[name] = q;
+        }
+        else{
+            aggvars[name]->aggregate(keys, function, value);
+        }
     }
 
 
@@ -337,7 +348,9 @@ namespace API
             | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "min" >> '(' >> arithmetic_expression >> ')')
             [boost::phoenix::bind(&aggregate, _1, _2, "min", _3)]
             | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "max" >> '(' >> arithmetic_expression >> ')')
-            [boost::phoenix::bind(&aggregate, _1, _2, "max", _3)];
+            [boost::phoenix::bind(&aggregate, _1, _2, "max", _3)]
+            | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "quantize" >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&quantize, _1, _2, "quantize", _3)];
 //        Rule aggregation = ('@' >> var >> "=" >> "sum(" >> arithmetic_expression >> ")")[phx::ref(aggvars)[_1][0]++];
 
 
@@ -575,7 +588,7 @@ namespace API
     bool read_counter(hpx::performance_counters::performance_counter counter, std::string* counter_name){
 
         int value = counter.get_value<int>().get();
-        std::cout << "READ COUNTER " << *counter_name << " " << value << std::endl;
+        //std::cout << "READ COUNTER " << *counter_name << " " << value << std::endl;
         //reading the counter from the API does not tigger APEX_SAMPLE_VALUE event to it has to be triggered manually
         apex::sample_value(*counter_name, value);
         return true;
@@ -629,7 +642,6 @@ namespace API
         apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, name_ptr](apex_context const& context)->int{
             
             sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
-                    std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
                 
             if(*dt.counter_name == *name_ptr){
 
@@ -685,7 +697,6 @@ namespace API
                 sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
                 
                 if(*dt.counter_name == *name_ptr){
-            std::cout << "AQUI COUNTER " << probe_predicate  << std::endl; 
 
                     fill_counter_variables(*name_ptr, dt.counter_value);
 
@@ -885,7 +896,7 @@ namespace API
                     //arg.first -> aggregation name
                     //arg.second -> aggregation object
                     std::cout << "Aggregation " << agg.first << ":" << std::endl;
-                    agg.second.print();
+                    agg.second->print();
                 }
                            
             }

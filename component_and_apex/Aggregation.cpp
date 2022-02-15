@@ -1,3 +1,5 @@
+#include <cmath>
+
 class Aggregation
 {
     typedef boost::variant<double, std::string> Variant;
@@ -9,7 +11,8 @@ class Aggregation
 
 	    //Aggregation() : type(""){}
 
-	    void aggregate(std::vector<Variant> keys, std::string function, double d){
+	    virtual void aggregate(std::vector<Variant> keys, std::string function, double d){
+
 		    if(type == ""){
 	            type = function;
 	        }
@@ -36,10 +39,11 @@ class Aggregation
 	        }
 	    }
 
-	    void print(){
+	    virtual void print(){
 
             std::cout << type << std::endl;
-    	    for (auto v : values){
+
+    	    for (std::pair<std::vector<Variant>, double> v : values){
                 //arg.first -> name
                 //arg.second -> value
                 for (Variant k : v.first){
@@ -56,4 +60,65 @@ class Aggregation
 	//void print();
 
 	
+};
+
+class Quantization : public Aggregation
+{
+    typedef boost::variant<double, std::string> Variant;
+	public:
+	    //std::map<std::vector<Variant>, std::vector<std::pair<double,int>>> values;
+	    std::map<std::vector<Variant>, std::map<double,int>> values;
+	    std::map<std::vector<Variant>, std::vector<int>> frequencies;
+
+
+	    void aggregate(std::vector<Variant> keys, std::string function, double d){
+
+		    if(type == ""){
+	            type = function;
+	        }
+	        else if(type != function){
+	            throw  "aggregation " + name + " is of type " + type;
+	        }
+
+
+
+			 auto it = frequencies.find(keys);
+			        if ( it == frequencies.end()){
+			            std::vector<int> v(32,0);
+			            v[std::floor(std::log2(d))]++;
+			            frequencies[keys] = v;
+			        }
+			        else{
+			            frequencies[keys][std::floor(std::log2(d))]++;
+			        }
+
+			values[keys][d]++;	       
+	    }
+
+
+	    void print(){
+
+            std::cout << type << std::endl;
+
+    	    for (auto v : frequencies){
+    	    	//print keys
+                for (Variant k : v.first){
+                	std::cout << k  << " ";
+                }
+                std::cout << ": " << std::endl;
+                //print distribution
+                int i, j;
+                std::vector<int>& dist = v.second;
+                //there will always be one element bigger than 0
+                for (i = 0; i < 32 && !dist[i]; i++);
+                for (j = 31; j >= i && !dist[j]; j--);
+
+                for (; i <= j; i++)
+                {
+                	std::cout << std::pow(2,i) <<  " " << v.second[i] << std::endl;
+                	
+                }
+
+            }
+	    }
 };
