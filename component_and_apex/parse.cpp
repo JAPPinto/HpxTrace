@@ -213,8 +213,19 @@ namespace API
     void aggregate(std::string name, std::vector<Variant> keys, std::string function, double value){
         auto it = aggvars.find(name);
         if ( it == aggvars.end()){
-            cout << "AAAA";
-            Aggregation* g = new Aggregation();
+            ScalarAggregation* g = new ScalarAggregation(name, function);
+            g->aggregate(keys, function, value);
+            aggvars[name] = g;
+        }
+        else{
+            aggvars[name]->aggregate(keys, function, value);
+        }
+    }
+
+    void average_aggregate(std::string name, std::vector<Variant> keys, std::string function, double value){
+        auto it = aggvars.find(name);
+        if ( it == aggvars.end()){
+            AverageAggregation* g = new AverageAggregation(name, function);
             g->aggregate(keys, function, value);
             aggvars[name] = g;
         }
@@ -227,7 +238,26 @@ namespace API
 
         auto it = aggvars.find(name);
         if ( it == aggvars.end()){
-            Quantization* q = new Quantization();
+            Quantization* q = new Quantization(name, function);
+            q->aggregate(keys, function, value);
+            aggvars[name] = q;
+        }
+        else{
+            aggvars[name]->aggregate(keys, function, value);
+        }
+    }
+
+    void lquantize(std::string name, std::vector<Variant> keys, std::string function, 
+                  double value,
+                  double lower_bound,
+                  double upper_bound,
+                  double step
+                  )
+    {
+
+        auto it = aggvars.find(name);
+        if ( it == aggvars.end()){
+            LQuantization* q = new LQuantization(name,function,lower_bound,upper_bound,step);
             q->aggregate(keys, function, value);
             aggvars[name] = q;
         }
@@ -245,6 +275,9 @@ namespace API
         using qi::_1;
         using qi::_2;
         using qi::_3;
+        using qi::_4;
+        using qi::_5;
+        using qi::_6;
         using qi::_val;
         using qi::_pass;
 
@@ -341,16 +374,29 @@ namespace API
         Rule aggregation = 
             ('@' >> var >> '[' >> keys >> ']' >> "=" >> "count()")
             [boost::phoenix::bind(&aggregate, _1, _2, "count", 0)]
-            | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "sum" >> '(' >> arithmetic_expression >> ')')
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "sum" >> '(' >> arithmetic_expression >> ')')
             [boost::phoenix::bind(&aggregate, _1, _2, "sum", _3)]
-            | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "avg" >> '(' >> arithmetic_expression >> ')')
-            [boost::phoenix::bind(&aggregate, _1, _2, "avg", _3)]
-            | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "min" >> '(' >> arithmetic_expression >> ')')
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "avg" >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&average_aggregate, _1, _2, "avg", _3)]
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "min" >> '(' >> arithmetic_expression >> ')')
             [boost::phoenix::bind(&aggregate, _1, _2, "min", _3)]
-            | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "max" >> '(' >> arithmetic_expression >> ')')
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "max" >> '(' >> arithmetic_expression >> ')')
             [boost::phoenix::bind(&aggregate, _1, _2, "max", _3)]
-            | ('@' >> var >> '[' >> keys >> ']' >> "=" >> "quantize" >> '(' >> arithmetic_expression >> ')')
-            [boost::phoenix::bind(&quantize, _1, _2, "quantize", _3)];
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "quantize" >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&quantize, _1, _2, "quantize", _3)]
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "lquantize" >> '(' >>
+                                                                          arithmetic_expression >> ',' >>
+                                                                          arithmetic_expression >> ',' >>
+                                                                          arithmetic_expression >> ',' >>
+                                                                          arithmetic_expression >>
+                                                                          ')')
+            [boost::phoenix::bind(&lquantize, _1, _2, "lquantize", _3, _4, _5, _6)];
 //        Rule aggregation = ('@' >> var >> "=" >> "sum(" >> arithmetic_expression >> ")")[phx::ref(aggvars)[_1][0]++];
 
 
