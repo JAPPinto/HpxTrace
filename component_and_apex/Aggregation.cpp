@@ -26,9 +26,6 @@ class ScalarAggregation : public Aggregation
 
         void aggregate(std::vector<Variant> keys, std::string f, double d){
 
-                if(function != f){
-                    throw  "aggregating function of " + name + " is " + function;
-                }
                 if(function == "count"){
                     values[keys]++;
                 }
@@ -71,10 +68,6 @@ class AverageAggregation : public Aggregation
 
         void aggregate(std::vector<Variant> keys, std::string f, double d){
 
-            if(function != f){
-                throw  "aggregating function of " + name + " is " + function;
-            }
-
             //average = average + ((value - average) / nValues)
             auto p =  values[keys];
             double avg = p.first;
@@ -108,10 +101,6 @@ class Quantization : public Aggregation
         Quantization(std::string n, std::string f) : Aggregation(n,f){}
 
         void aggregate(std::vector<Variant> keys, std::string f, double d){
-
-            if(function != f){
-                throw  "aggregating function of " + name + " is " + function;
-            }
 
              auto it = frequencies.find(keys);
                     if ( it == frequencies.end()){
@@ -170,18 +159,12 @@ class LQuantization : public Aggregation
         void aggregate(std::vector<Variant> keys, std::string f, double d)
         {
 
-            if(function != f){
-                throw  "aggregating function of " + name + " is " + function;
-            }
-
              auto it = frequencies.find(keys);
                     if ( it == frequencies.end()){
 
                         int size = std::floor((upper_bound - lower_bound) / step) + 1;
-                        std::cout << size << " " << lower_bound << " " << upper_bound << " " << step << "\n";
                         std::vector<int> v(size,0);
                         v[std::floor((d -lower_bound)/step)]++;
-                        std::cout << d << " " << std::floor((d -lower_bound)/step) << "\n" ;
 
                         frequencies[keys] = v;
                     }

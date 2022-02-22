@@ -211,61 +211,246 @@ namespace API
     }
 
     void aggregate(std::string name, std::vector<Variant> keys, std::string function, double value){
-        auto it = aggvars.find(name);
-        if ( it == aggvars.end()){
-            ScalarAggregation* g = new ScalarAggregation(name, function);
-            g->aggregate(keys, function, value);
-            aggvars[name] = g;
-        }
-        else{
-            aggvars[name]->aggregate(keys, function, value);
-        }
+        aggvars[name]->aggregate(keys, function, value);
     }
 
     void average_aggregate(std::string name, std::vector<Variant> keys, std::string function, double value){
-        auto it = aggvars.find(name);
-        if ( it == aggvars.end()){
-            AverageAggregation* g = new AverageAggregation(name, function);
-            g->aggregate(keys, function, value);
-            aggvars[name] = g;
-        }
-        else{
-            aggvars[name]->aggregate(keys, function, value);
-        }
+        aggvars[name]->aggregate(keys, function, value);
     }
 
     void quantize(std::string name, std::vector<Variant> keys, std::string function, double value){
-
-        auto it = aggvars.find(name);
-        if ( it == aggvars.end()){
-            Quantization* q = new Quantization(name, function);
-            q->aggregate(keys, function, value);
-            aggvars[name] = q;
-        }
-        else{
             aggvars[name]->aggregate(keys, function, value);
-        }
     }
 
-    void lquantize(std::string name, std::vector<Variant> keys, std::string function, 
-                  double value,
-                  double lower_bound,
-                  double upper_bound,
-                  double step
-                  )
-    {
+    void lquantize(std::string name, std::vector<Variant> keys, std::string function, double value){
 
-        auto it = aggvars.find(name);
-        if ( it == aggvars.end()){
-            LQuantization* q = new LQuantization(name,function,lower_bound,upper_bound,step);
-            q->aggregate(keys, function, value);
-            aggvars[name] = q;
-        }
-        else{
-            aggvars[name]->aggregate(keys, function, value);
-        }
+        aggvars[name]->aggregate(keys, function, value);
+        
     }
 
+
+    void validate_aggregating_function(
+        std::map<std::string, std::string> &aggregations,
+        std::string name, 
+        std::string new_function
+        ){
+            std::string previous_function = aggregations[name];
+            if(previous_function == ""){
+                aggregations[name] = new_function;
+
+                if(new_function == "avg"){
+                    AverageAggregation* g = new AverageAggregation(name, new_function);
+                    aggvars[name] = g;
+                }
+                else if(new_function == "quantize"){
+                    Quantization* q = new Quantization(name, new_function);
+                    aggvars[name] = q;
+                }
+                //if count, sum, max, min
+                else if (new_function != "lquantize"){
+                    ScalarAggregation* g = new ScalarAggregation(name, new_function);
+                    aggvars[name] = g;
+                }
+            }
+            else if (new_function != previous_function){
+                std::string error = "aggregation redefined\n";
+                error += " current: @" + name + " = " + new_function + "() \n";
+                error += "previous: @" + name + " = " + previous_function + "() \n";
+                throw std::runtime_error(error);
+            }    
+    }
+
+    void validate_lquantize_parameters(
+        std::map<std::string, std::vector<int>> &lquantizes,
+        std::string name, 
+        int lower_bound, int upper_bound, int step
+        ){
+            auto it = lquantizes.find(name);
+            std::vector<int> test = {lower_bound, upper_bound, step};
+            if(it == lquantizes.end()){
+                lquantizes[name] = test;
+                LQuantization* q = new LQuantization(name,"lquantize",lower_bound,upper_bound,step);
+                aggvars[name] = q;
+            }
+            else if(it->second != test){
+                std::string error = "lquantization parameters redefined\n";
+                error += " current: @" + name + " = lquantize(_, " + std::to_string(lower_bound) +
+                 ", " + std::to_string(upper_bound) + ", " + std::to_string(step) + ")\n";
+                error += "previous: @" + name + " = lquantize(_, " + std::to_string(it->second[0]) +
+                 ", " + std::to_string(it->second[1]) + ", " + std::to_string(it->second[2]) + ")\n";
+                throw std::runtime_error(error);
+            }
+    }
+
+
+
+    template <typename Iterator>
+    bool check_for_errors(Iterator first, Iterator last) {
+        using qi::double_;
+        using qi::char_;
+        using qi::_1;
+        using qi::_2;
+        using qi::_3;
+        using qi::_4;
+        using qi::_5;
+        using qi::_6;
+        using qi::_val;
+        using qi::_pass;
+
+        //using qi::string_;
+
+
+        using qi::phrase_parse;
+        using ascii::space;
+        
+
+
+        typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
+        typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
+        typedef qi::rule<Iterator, ascii::space_type> Rule;
+
+
+
+
+        //String rules
+        qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
+        RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+        //Var rules
+        RuleString var = (char_("a-zA-Z_") >> *char_("a-zA-Z0-9_"));
+       // RuleString string_var = (var[_pass = boost::phoenix::bind(&is_string_variable, _1)])[_val = phx::ref(stvars)[_1]];
+        //RuleDouble double_var = (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(dvars)[_1]];
+        //Function rules
+        Rule string_function;
+        Rule double_function;
+        //Values rules
+        Rule string_value = string | string_function | var;
+        Rule double_value = double_ | double_function | var;
+
+
+        //RETIRAR VAR DE VALUE?
+        //Expression rules
+
+        Rule string_expression = 
+            string_value                            
+            >> *('+' >> string_value                );
+
+        Rule arithmetic_expression, term, factor;
+
+        arithmetic_expression =
+            term                            
+            >> *(   ('+' >> term            )
+                |   ('-' >> term            )
+                )
+            ;
+
+        term =
+            factor                          
+            >> *(   ('*' >> factor          )
+                |   ('/' >> factor          )
+                )
+            ;
+
+        factor =
+                double_value                 
+            |   '(' >> arithmetic_expression  >> ')'
+            |   ('-' >> factor               )
+            |   ('+' >> factor               )
+            ;
+
+
+        //qi::rule<Iterator, ascii::space_type, Variant()> value ;
+        Rule value = arithmetic_expression 
+              | string_expression;
+
+
+
+
+
+        Rule assignment = (var >> '=' >> arithmetic_expression)
+                    | (var >> '=' >> string_expression);  
+
+
+
+        Rule print = ("print(" >> value >> ')');
+
+
+        //strjoin = ("strjoin(" >> value >> ',' >> value >> ')')[_val = boost::phoenix::bind(&strjoin_func, _1, _2)];
+        
+        Rule str = ("str(" >> arithmetic_expression >> ')');
+        string_function = str;
+
+        Rule dbl = ("dbl(" >> string_expression >> ')');
+        double_function = dbl;
+
+        Rule function = print;
+
+    //void aggregate(std::string name, Variant key, std::string operation, double value){
+
+        qi::rule<Iterator, ascii::space_type> keys = value % ',';
+         
+
+        //obj - verificar se func é a mesma
+        //mapa var - func
+
+        std::map<std::string, std::string> aggregations;
+        std::map<std::string, std::vector<int>> lquantizes;
+
+
+
+        Rule aggregation = 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "count()")
+            [boost::phoenix::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "count")]
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "sum" >> '(' >> arithmetic_expression  >> ')')
+            [boost::phoenix::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "sum")]
+            |
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "avg" >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "avg")]
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "min" >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "min")]
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "max" >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "max")]
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "quantize" >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "quantize")]
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "lquantize" >> '(' >>
+                                                                          arithmetic_expression >> ',' >>
+                                                                          double_ >> ',' >>
+                                                                          double_ >> ',' >>
+                                                                          double_ >>
+                                                                          ')')
+            [boost::phoenix::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "lquantize"),
+            boost::phoenix::bind(&validate_lquantize_parameters, phx::ref(lquantizes), _1, _2,_3,_4)
+            ];
+
+
+
+
+        Rule statement = assignment | print | aggregation;
+
+        Rule probe = statement >> ';' >> *(statement >> ';');
+
+
+
+        bool r = phrase_parse(
+            first,                          /*< start iterator >*/
+            last,                              /*< end iterator >*/
+            probe,   /*< the parser >*/
+            space
+        );
+
+
+        if (first != last){// fail if we did not get a full match
+            std::cout << "FALHOU " << probe << "\n";
+            return false;
+        }
+
+
+        return r;
+    }  
 
 
     template <typename Iterator>
@@ -392,11 +577,11 @@ namespace API
             | 
             ('@' >> var >> '[' >> keys >> ']' >> "=" >> "lquantize" >> '(' >>
                                                                           arithmetic_expression >> ',' >>
-                                                                          arithmetic_expression >> ',' >>
-                                                                          arithmetic_expression >> ',' >>
-                                                                          arithmetic_expression >>
+                                                                          double_ >> ',' >>
+                                                                          double_ >> ',' >>
+                                                                          double_ >>
                                                                           ')')
-            [boost::phoenix::bind(&lquantize, _1, _2, "lquantize", _3, _4, _5, _6)];
+            [boost::phoenix::bind(&lquantize, _1, _2, "lquantize", _3)];
 //        Rule aggregation = ('@' >> var >> "=" >> "sum(" >> arithmetic_expression >> ")")[phx::ref(aggvars)[_1][0]++];
 
 
@@ -878,6 +1063,10 @@ namespace API
             std::string probe_predicate = match[2];
             std::string probe_script = match[3];
             std::cout << probe_name << " " << probe_script << "\n";
+
+            check_for_errors(probe_script.begin(), probe_script.end());
+
+
 
             if(probe_name == "BEGIN"){
 
