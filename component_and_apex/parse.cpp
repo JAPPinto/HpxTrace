@@ -285,7 +285,7 @@ namespace API
 
 
     template <typename Iterator>
-    bool check_for_errors(Iterator first, Iterator last) {
+    bool validate_actions(Iterator first, Iterator last) {
         using qi::double_;
         using qi::char_;
         using qi::_1;
@@ -444,8 +444,12 @@ namespace API
 
 
         if (first != last){// fail if we did not get a full match
-            std::cout << "FALHOU " << probe << "\n";
-            return false;
+            std::string error = "Syntax error in action: \n" ;
+            for (; (*first) != ';' || first == last; first++)
+            {
+                error += *first;
+            }
+            throw std::runtime_error(error);
         }
 
 
@@ -637,6 +641,133 @@ namespace API
 
 
     template <typename Iterator>
+    bool validate_predicate(Iterator first, Iterator last) {
+
+        using qi::double_;
+        using qi::char_;
+        using qi::_1;
+        using qi::_2;
+        using qi::_3; 
+        using qi::_val;
+        using qi::_pass;
+
+        //using qi::string_;
+
+
+        using qi::phrase_parse;
+        using ascii::space;
+        
+
+
+        typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
+        typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
+        typedef qi::rule<Iterator, ascii::space_type> Rule;
+
+
+
+
+        //String rules
+        qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
+        RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+        //Var rules
+        RuleString var = (char_("a-zA-Z_") >> *char_("a-zA-Z0-9_"));
+        //Function rules
+        Rule string_function;
+        Rule double_function;
+        //Values rules
+        Rule string_value = string | string_function | var;
+        Rule double_value = double_ | double_function | var;
+
+        //Expression rules
+
+        Rule string_expression = 
+            string_value                            
+            >> *('+' >> string_value                );
+
+        Rule arithmetic_expression, term, factor;
+
+        arithmetic_expression =
+            term                            
+            >> *(   ('+' >> term            )
+                |   ('-' >> term            )
+                )
+            ;
+
+        term =
+            factor                          
+            >> *(   ('*' >> factor          )
+                |   ('/' >> factor          )
+                )
+            ;
+
+        factor =
+                double_value                 
+            |   '(' >> arithmetic_expression  >> ')'
+            |   ('-' >> factor               )
+            |   ('+' >> factor               )
+            ;
+
+
+        qi::rule<Iterator, ascii::space_type> value ;
+        value = arithmetic_expression 
+              | string_expression;
+
+        qi::rule<Iterator, ascii::space_type, std::string()> op;
+        qi::rule<Iterator, ascii::space_type> predicate, comparison, ands, ors, parentheses, expression, subexpression;
+
+
+        op = +char_("=<>!");
+
+        //comparison = (value >> op >> value)[_val = boost::phoenix::bind(&compare, _1, _2, _3)];
+        comparison = (string_expression >> "==" >> string_expression)
+                   | (string_expression >> "!=" >> string_expression)
+                   | (arithmetic_expression >> "==" >> arithmetic_expression)
+                   | (arithmetic_expression >> "!=" >> arithmetic_expression)
+                   | (arithmetic_expression >> "<"  >> arithmetic_expression)
+                   | (arithmetic_expression >> "<=" >> arithmetic_expression)
+                   | (arithmetic_expression >> ">"  >> arithmetic_expression)
+                   | (arithmetic_expression >> ">=" >> arithmetic_expression);
+
+
+
+
+        bool result;
+
+        parentheses = comparison | ('(' >> ors >> ')');
+
+
+        ands = parentheses >> *("&&" >> parentheses);
+        ors = ands >> *("||" >> ands);
+
+
+        predicate = ('/' >> ors  >> '/');
+
+
+        bool r = phrase_parse(
+            first,                          /*< start iterator >*/
+            last,                           /*< end iterator >*/
+            predicate,                      /*< the parser >*/
+            space
+        );
+
+
+        if (first != last){// fail if we did not get a full match
+            std::string error = "Syntax error in predicate: \n" ;
+            for (; (*first) != ';' || first == last; first++)
+            {
+                error += *first;
+            }
+            throw std::runtime_error(error);
+        }
+
+
+        return result;
+    }
+
+
+
+
+    template <typename Iterator>
     bool parse_predicate(Iterator first, Iterator last) {
 
         using qi::double_;
@@ -802,7 +933,6 @@ namespace API
                     //arg.second -> variable value
                     stvars[arg.first] = arg.second; 
                 }
-        std::cout << "register_probe " << probe_predicate << std::endl;
                 if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
                     parse_probe(script.begin(), script.end());
                 }
@@ -1064,7 +1194,9 @@ namespace API
             std::string probe_script = match[3];
             std::cout << probe_name << " " << probe_script << "\n";
 
-            check_for_errors(probe_script.begin(), probe_script.end());
+            if(probe_predicate != "") 
+                validate_predicate(probe_predicate.begin(), probe_predicate.end());
+            validate_actions(probe_script.begin(), probe_script.end());
 
 
 
@@ -1073,8 +1205,6 @@ namespace API
                 std::cout << "BEGIN " << probe_name << std::endl; 
 
                 parse_probe(probe_script.begin(), probe_script.end());
-
-
             }
 
             else if(probe_name == "END"){
@@ -1086,10 +1216,7 @@ namespace API
                   [end_script]()->void{
          
                     
-                    parse_probe(end_script.begin(), end_script.end());
-
-
-                    
+                    parse_probe(end_script.begin(), end_script.end());    
                 });
             }
 
