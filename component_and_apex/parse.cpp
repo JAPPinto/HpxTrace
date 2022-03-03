@@ -210,24 +210,9 @@ namespace API
         }
     }
 
-    void aggregate(std::string name, std::vector<Variant> keys, std::string function, double value){
-        aggvars[name]->aggregate(keys, function, value);
+    void aggregate(std::string name, std::vector<Variant> keys, double value){
+        aggvars[name]->aggregate(keys, value);
     }
-
-    void average_aggregate(std::string name, std::vector<Variant> keys, std::string function, double value){
-        aggvars[name]->aggregate(keys, function, value);
-    }
-
-    void quantize(std::string name, std::vector<Variant> keys, std::string function, double value){
-            aggvars[name]->aggregate(keys, function, value);
-    }
-
-    void lquantize(std::string name, std::vector<Variant> keys, std::string function, double value){
-
-        aggvars[name]->aggregate(keys, function, value);
-        
-    }
-
 
     void validate_aggregating_function(
         std::map<std::string, std::string> &aggregations,
@@ -332,7 +317,7 @@ namespace API
 
         Rule string_expression = 
             string_value                            
-            >> *('+' >> string_value                );
+            >> *('+' >> string_value);
 
         Rule arithmetic_expression, term, factor;
 
@@ -357,13 +342,8 @@ namespace API
             |   ('+' >> factor               )
             ;
 
-
-        //qi::rule<Iterator, ascii::space_type, Variant()> value ;
         Rule value = arithmetic_expression 
               | string_expression;
-
-
-
 
 
         Rule assignment = (var >> '=' >> arithmetic_expression)
@@ -371,10 +351,9 @@ namespace API
 
 
 
-        Rule print = ("print(" >> value >> ')');
+        Rule print = ("print(" >> arithmetic_expression >> ')')
+                   | ("print(" >> string_expression >> ')');
 
-
-        //strjoin = ("strjoin(" >> value >> ',' >> value >> ')')[_val = boost::phoenix::bind(&strjoin_func, _1, _2)];
         
         Rule str = ("str(" >> arithmetic_expression >> ')');
         string_function = str;
@@ -384,13 +363,9 @@ namespace API
 
         Rule function = print;
 
-    //void aggregate(std::string name, Variant key, std::string operation, double value){
 
         qi::rule<Iterator, ascii::space_type> keys = value % ',';
          
-
-        //obj - verificar se func é a mesma
-        //mapa var - func
 
         std::map<std::string, std::string> aggregations;
         std::map<std::string, std::vector<int>> lquantizes;
@@ -429,23 +404,23 @@ namespace API
 
 
 
-        Rule statement = assignment | print | aggregation;
+        Rule action = assignment | print | aggregation;
 
-        Rule probe = statement >> ';' >> *(statement >> ';');
+        Rule actions = action >> ';' >> *(action >> ';');
 
 
 
         bool r = phrase_parse(
             first,                          /*< start iterator >*/
             last,                              /*< end iterator >*/
-            probe,   /*< the parser >*/
+            actions,   /*< the parser >*/
             space
         );
 
 
         if (first != last){// fail if we did not get a full match
             std::string error = "Syntax error in action: \n" ;
-            for (; (*first) != ';' || first == last; first++)
+            for (; (*first) != ';' && first != last; first++)
             {
                 error += *first;
             }
@@ -469,8 +444,7 @@ namespace API
         using qi::_6;
         using qi::_val;
         using qi::_pass;
-
-        //using qi::string_;
+        using boost::spirit::lit;
 
 
         using qi::phrase_parse;
@@ -543,9 +517,6 @@ namespace API
 
 
         Rule print = ("print(" >> value >> ')')[boost::phoenix::bind(&print_value, _1)];
-
-
-        //strjoin = ("strjoin(" >> value >> ',' >> value >> ')')[_val = boost::phoenix::bind(&strjoin_func, _1, _2)];
         
         RuleString str = ("str(" >> arithmetic_expression >> ')')[_val = boost::phoenix::bind(&to_string, _1)];
         string_function = str;
@@ -555,29 +526,17 @@ namespace API
 
         Rule function = print;
 
-    //void aggregate(std::string name, Variant key, std::string operation, double value){
-
         qi::rule<Iterator, ascii::space_type, std::vector<Variant>> keys = value % ',';
-         
+        //if lit is not used, compiler tries to do binary OR
+        Rule agg_funcs = lit("sum") | "avg" | "min" | "max" | "quantize";
 
         Rule aggregation = 
             ('@' >> var >> '[' >> keys >> ']' >> "=" >> "count()")
-            [boost::phoenix::bind(&aggregate, _1, _2, "count", 0)]
+            [boost::phoenix::bind(&aggregate, _1, _2, 0)]
             | 
-            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "sum" >> '(' >> arithmetic_expression >> ')')
-            [boost::phoenix::bind(&aggregate, _1, _2, "sum", _3)]
-            | 
-            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "avg" >> '(' >> arithmetic_expression >> ')')
-            [boost::phoenix::bind(&average_aggregate, _1, _2, "avg", _3)]
-            | 
-            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "min" >> '(' >> arithmetic_expression >> ')')
-            [boost::phoenix::bind(&aggregate, _1, _2, "min", _3)]
-            | 
-            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "max" >> '(' >> arithmetic_expression >> ')')
-            [boost::phoenix::bind(&aggregate, _1, _2, "max", _3)]
-            | 
-            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "quantize" >> '(' >> arithmetic_expression >> ')')
-            [boost::phoenix::bind(&quantize, _1, _2, "quantize", _3)]
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> 
+            agg_funcs >> '(' >> arithmetic_expression >> ')')
+            [boost::phoenix::bind(&aggregate, _1, _2, _3)]
             | 
             ('@' >> var >> '[' >> keys >> ']' >> "=" >> "lquantize" >> '(' >>
                                                                           arithmetic_expression >> ',' >>
@@ -585,32 +544,30 @@ namespace API
                                                                           double_ >> ',' >>
                                                                           double_ >>
                                                                           ')')
-            [boost::phoenix::bind(&lquantize, _1, _2, "lquantize", _3)];
-//        Rule aggregation = ('@' >> var >> "=" >> "sum(" >> arithmetic_expression >> ")")[phx::ref(aggvars)[_1][0]++];
+            [boost::phoenix::bind(&aggregate, _1, _2, _3)];
 
 
+        Rule action = assignment | print | aggregation;
 
-
-
-
-
-        Rule statement = assignment | print | aggregation;
-
-        Rule probe = statement >> ';' >> *(statement >> ';');
+        Rule actions = action >> ';' >> *(action >> ';');
 
 
 
         bool r = phrase_parse(
             first,                          /*< start iterator >*/
             last,                              /*< end iterator >*/
-            probe,   /*< the parser >*/
+            actions,   /*< the parser >*/
             space
         );
 
 
         if (first != last){// fail if we did not get a full match
-            std::cout << "FALHOU " << probe << "\n";
-            return false;
+            std::string error = "Variable with wrong type/uninitialized in action: \n" ;
+            for (; (*first) != ';' && first != last; first++)
+            {
+                error += *first;
+            }
+            throw std::runtime_error(error);
         }
 
 
@@ -620,8 +577,6 @@ namespace API
 
     bool compare(Variant a, std::string op, Variant b){
         std::cout << "compare " << a  << op  << b << " "<< "\n";
-
-        //if(a.type() == typeid(double)) std::cout << "AAAAA\n";
 
         if(op == "==") return a == b;
         if(op == "!=") return a != b;
@@ -718,7 +673,6 @@ namespace API
 
         op = +char_("=<>!");
 
-        //comparison = (value >> op >> value)[_val = boost::phoenix::bind(&compare, _1, _2, _3)];
         comparison = (string_expression >> "==" >> string_expression)
                    | (string_expression >> "!=" >> string_expression)
                    | (arithmetic_expression >> "==" >> arithmetic_expression)
@@ -727,8 +681,6 @@ namespace API
                    | (arithmetic_expression >> "<=" >> arithmetic_expression)
                    | (arithmetic_expression >> ">"  >> arithmetic_expression)
                    | (arithmetic_expression >> ">=" >> arithmetic_expression);
-
-
 
 
         bool result;
@@ -753,7 +705,7 @@ namespace API
 
         if (first != last){// fail if we did not get a full match
             std::string error = "Syntax error in predicate: \n" ;
-            for (; (*first) != ';' || first == last; first++)
+            for (; first != last; first++)
             {
                 error += *first;
             }
@@ -777,10 +729,6 @@ namespace API
         using qi::_3; 
         using qi::_val;
         using qi::_pass;
-
-        //using qi::string_;
-
-
         using qi::phrase_parse;
         using ascii::space;
         
@@ -789,8 +737,6 @@ namespace API
         typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
         typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
         typedef qi::rule<Iterator, ascii::space_type> Rule;
-
-
 
 
         //String rules
@@ -949,7 +895,6 @@ namespace API
     bool read_counter(hpx::performance_counters::performance_counter counter, std::string* counter_name){
 
         int value = counter.get_value<int>().get();
-        //std::cout << "READ COUNTER " << *counter_name << " " << value << std::endl;
         //reading the counter from the API does not tigger APEX_SAMPLE_VALUE event to it has to be triggered manually
         apex::sample_value(*counter_name, value);
         return true;
@@ -1263,62 +1208,12 @@ namespace API
                            
             }
         );
-
-
-
-
-
-
     }
-
 
     void finalize(){
         for (auto  element : interval_timers) {
             std::cout << "finalize\n";
             element->~interval_timer();
-}
-    }
-
-
-}
-
-////////////////////////////////////////////////////////////////////////////
-//  Main program
-////////////////////////////////////////////////////////////////////////////
-
-/*
-int
-main()
-{
-    std::cout << "/////////////////////////////////////////////////////////\n\n";
-    std::cout << "\t\tA comma separated list parser for Spirit...\n\n";
-    std::cout << "/////////////////////////////////////////////////////////\n\n";
-
-    std::cout << "Give me a comma separated list of numbers.\n";
-    std::cout << "Type [q or Q] to quit\n\n";
-
-    std::string str;
-    std::map<std::string,double> dvars;
-    while (getline(std::cin, str))
-    {
-        if (str.empty() || str[0] == 'q' || str[0] == 'Q')
-            break;
-
-        if (client::parse_probe(str.begin(), str.end(), dvars))
-        {
-            std::cout << "-------------------------\n";
-            std::cout << "Parsing succeeded\n";
-            std::cout << str << " Parses OK: " << std::endl;
-        }
-        else
-        {
-            std::cout << "-------------------------\n";
-            std::cout << "Parsing failed\n";
-            std::cout << "-------------------------\n";
         }
     }
-
-    std::cout << "Bye... :-) \n\n";
-    return 0;
 }
-*/

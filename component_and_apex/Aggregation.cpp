@@ -9,7 +9,7 @@ class Aggregation
 
         Aggregation(std::string n, std::string f) : name(n) , function(f){}
 
-        virtual void aggregate(std::vector<Variant> keys, std::string f, double d){}
+        virtual void aggregate(std::vector<Variant> keys, double d){}
 
         virtual void print(){}
 };
@@ -24,7 +24,7 @@ class ScalarAggregation : public Aggregation
         ScalarAggregation(std::string n, std::string f) : Aggregation(n,f){}
 
 
-        void aggregate(std::vector<Variant> keys, std::string f, double d){
+        void aggregate(std::vector<Variant> keys, double d){
 
                 if(function == "count"){
                     values[keys]++;
@@ -66,7 +66,7 @@ class AverageAggregation : public Aggregation
         AverageAggregation(std::string n, std::string f) : Aggregation(n,f){}
 
 
-        void aggregate(std::vector<Variant> keys, std::string f, double d){
+        void aggregate(std::vector<Variant> keys, double d){
 
             //average = average + ((value - average) / nValues)
             auto p =  values[keys];
@@ -100,7 +100,7 @@ class Quantization : public Aggregation
 
         Quantization(std::string n, std::string f) : Aggregation(n,f){}
 
-        void aggregate(std::vector<Variant> keys, std::string f, double d){
+        void aggregate(std::vector<Variant> keys, double d){
 
              auto it = frequencies.find(keys);
                     if ( it == frequencies.end()){
@@ -156,7 +156,7 @@ class LQuantization : public Aggregation
 
         
 
-        void aggregate(std::vector<Variant> keys, std::string f, double d)
+        void aggregate(std::vector<Variant> keys, double d)
         {
 
              auto it = frequencies.find(keys);
@@ -200,11 +200,8 @@ class LQuantization : public Aggregation
                 j = size-1;
                 for (; i <= j; i++)
                 {
-                    std::cout << lower_bound + i*step <<  " " << v.second[i] << std::endl;
-                    
+                    std::cout << lower_bound + i*step <<  " " << v.second[i] << std::endl;   
                 }
-                
-
             }
         }
 };
