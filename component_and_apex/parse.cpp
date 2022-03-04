@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <map>
+#include <chrono>
 #include <apex_api.hpp>
 #include <regex>
 #include <boost/bind.hpp>
@@ -20,13 +22,12 @@
 
 using namespace std;
 
-//#include "grammar.cpp"
-
 
 namespace API
 {
 
     typedef boost::variant<double, std::string> Variant;
+
     //std::map<std::string, std::map<std::vector<boost::variant<double, std::string>>, double>> aggvars
 
     #define VARIANT_DOUBLE 0
@@ -39,15 +40,9 @@ namespace API
     std::map<std::string, std::string> stvars; //global variables
     //std::map<std::string, std::map<Variant,double>> aggvars; //aggregation variables
     std::map<std::string, Aggregation*> aggvars; //aggregation variables
-
-
-
-    std::map<std::string,apex_event_type> event_types;
-
-
-
-
-    std::vector<hpx::util::interval_timer*> interval_timers;
+    std::map<std::string,apex_event_type> event_types; 
+    std::vector<hpx::util::interval_timer*> interval_timers; //for counter-create
+    std::chrono::steady_clock::time_point start_time;
 
     namespace qi = boost::spirit::qi;
 
@@ -431,6 +426,12 @@ namespace API
         return r;
     }  
 
+    int elapsed_time(){
+        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+        std::cout << std::chrono::duration_cast<std::chrono::seconds> (now - start_time).count();
+        return std::chrono::duration_cast<std::chrono::nanoseconds> (now - start_time).count();
+    }
+
 
     template <typename Iterator>
     bool parse_probe(Iterator first, Iterator last) {
@@ -466,12 +467,15 @@ namespace API
         RuleString var = (char_("a-zA-Z_") >> *char_("a-zA-Z0-9_"));
         RuleString string_var = (var[_pass = boost::phoenix::bind(&is_string_variable, _1)])[_val = phx::ref(stvars)[_1]];
         RuleDouble double_var = (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(dvars)[_1]];
+
+        RuleDouble timestamp = lit("timestamp")[_val =  boost::phoenix::bind(&elapsed_time)];
+
         //Function rules
         RuleString string_function;
         RuleDouble double_function;
         //Values rules
         RuleString string_value = string | string_function | string_var;
-        RuleDouble double_value = double_ | double_function | double_var;
+        RuleDouble double_value = double_ | double_function | timestamp| double_var;
 
         //Expression rules
 
@@ -643,7 +647,7 @@ namespace API
 
         arithmetic_expression =
             term                            
-            >> *(   ('+' >> term            )
+            >> *(   ('+' >> term            )//[_1 + 10]
                 |   ('-' >> term            )
                 )
             ;
@@ -1114,6 +1118,10 @@ namespace API
 
     void parse_script(std::string script){
 
+
+
+        start_time = std::chrono::steady_clock::now();
+
         std::regex rgx_cc("^[\\n\\r\\s]*(counter\\-create::[^:]+::[0-9]+::)(/[^/]*/)?\\{([^{}]*)\\}");
         std::regex rgx_c("^[\\n\\r\\s]*(counter(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
         std::regex rgx_ct("^[\\n\\r\\s]*(counter\\-type(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
@@ -1148,6 +1156,8 @@ namespace API
             if(probe_name == "BEGIN"){
 
                 std::cout << "BEGIN " << probe_name << std::endl; 
+
+
 
                 parse_probe(probe_script.begin(), probe_script.end());
             }
