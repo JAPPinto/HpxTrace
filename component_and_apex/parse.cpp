@@ -27,7 +27,6 @@ namespace API
 {
 
     typedef boost::variant<double, std::string> Variant;
-
     //std::map<std::string, std::map<std::vector<boost::variant<double, std::string>>, double>> aggvars
 
     #define VARIANT_DOUBLE 0
@@ -1052,17 +1051,16 @@ namespace API
                 
                 hpx::performance_counters::counter_path_elements p;
 
+
+                hpx::error_code ec; 
                 hpx::performance_counters::counter_status status = 
-                            get_counter_path_elements(*dt.counter_name, p);
+                            get_counter_path_elements(*dt.counter_name, p, ec);
+
 
                 string type_sampled = '/' + p.objectname_ + '/' + p.countername_;
 
-
-                //if sampled counter belongs to the desired type 
-                if(type_sampled.find(*(type_ptr)) != -1){
-                    cout << "PATHS DEU" << endl;
-
-
+                //if is counter and belongs to the desired type 
+                if(&ec != &hpx::throws && type_sampled.find(*(type_ptr)) != -1){
                     fill_counter_variables(*dt.counter_name, dt.counter_value);
 
                     if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
