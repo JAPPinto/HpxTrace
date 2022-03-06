@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <map>
 #include <chrono>
 #include <apex_api.hpp>
 #include <regex>
@@ -20,7 +19,6 @@
 
 #define BOOST_SPIRIT_USE_PHOENIX_V3 1
 
-using namespace std;
 
 
 namespace API
@@ -52,7 +50,7 @@ namespace API
     #define DOUBLE_VAR 0
     #define STRING_VAR 1
 
-    int check_type(string name){
+    int check_type(std::string name){
         auto d_it = dvars.find(name);
         if ( d_it != dvars.end()){
             return DOUBLE_VAR;
@@ -64,7 +62,7 @@ namespace API
         return NON_EXISTANT;
     }
 
-    bool is_double_variable(string name){
+    bool is_double_variable(std::string name){
         auto it = dvars.find(name);
         if ( it != dvars.end()){
             return true;
@@ -72,7 +70,7 @@ namespace API
         return false;
     }
 
-        bool is_string_variable(string name){
+        bool is_string_variable(std::string name){
         auto it = stvars.find(name);
         if ( it != stvars.end()){
             return true;
@@ -90,7 +88,7 @@ namespace API
         {
             std::cout << "double " << it->first << " " << it->second << "\n";
         }
-        cout << endl;
+        std::cout << std::endl;
         for(auto it = stvars.cbegin(); it != stvars.cend(); ++it)
         {
             std::cout << "string " << it->first << " " << it->second << "\n";
@@ -153,17 +151,17 @@ namespace API
 
 
 
-
+/*
 
     void print_string_value(std::string s){
         std::cout << "API PRINT STRING: " << s << std::endl;
     }
 
     std::string strjoin_func(Variant a, Variant b){
-        if(a.type() != typeid(string) || b.type() != typeid(string)){
+        if(a.type() != typeid(std::string) || b.type() != typeid(std::string)){
             throw "strjoin: invalid argument "; 
         }
-        std::cout << "strjoin " << boost::get<string>(a)+boost::get<string>(b) << std::endl;
+        std::cout << "strjoin " << boost::get<string>(a)+boost::get<std::string>(b) << std::endl;
 
         return boost::get<string>(a)+boost::get<string>(b);
     }
@@ -203,6 +201,7 @@ namespace API
 
         }
     }
+    */
 
     void aggregate(std::string name, std::vector<Variant> keys, double value){
         aggvars[name]->aggregate(keys, value);
@@ -353,7 +352,14 @@ namespace API
         string_function = str;
 
         Rule dbl = ("dbl(" >> string_expression >> ')');
-        double_function = dbl;
+
+        RuleDouble round = ("round(" >> arithmetic_expression >> ')');
+        RuleDouble ceil = ("ceil(" >> arithmetic_expression >> ')');
+        RuleDouble floor = ("floor(" >> arithmetic_expression >> ')');
+
+
+        double_function = dbl | round | ceil | floor;
+
 
         Rule function = print;
 
@@ -430,6 +436,12 @@ namespace API
         std::cout << std::chrono::duration_cast<std::chrono::seconds> (now - start_time).count();
         return std::chrono::duration_cast<std::chrono::nanoseconds> (now - start_time).count();
     }
+
+    double round_(double d){return std::round(d);}
+    double ceil_(double d){return std::ceil(d);}
+    double floor_(double d){return std::floor(d);}
+
+
 
 
     template <typename Iterator>
@@ -525,7 +537,13 @@ namespace API
         string_function = str;
 
         RuleDouble dbl = ("dbl(" >> string_expression >> ')')[_val = boost::phoenix::bind(&to_double, _1)];
-        double_function = dbl;
+
+        RuleDouble round = ("round(" >> arithmetic_expression >> ')')[_val = boost::phoenix::bind(&round_, _1)];
+        RuleDouble ceil = ("ceil(" >> arithmetic_expression >> ')')[_val = boost::phoenix::bind(&ceil_, _1)];
+        RuleDouble floor = ("floor(" >> arithmetic_expression >> ')')[_val = boost::phoenix::bind(&floor_, _1)];
+
+
+        double_function = dbl | round | ceil | floor;
 
         Rule function = print;
 
@@ -904,7 +922,7 @@ namespace API
     }
 
 
-    void fill_counter_variables(string name, double value){
+    void fill_counter_variables(std::string name, double value){
         stvars["counter_name"] = name;
         dvars["counter_value"] = value;
 
@@ -913,12 +931,16 @@ namespace API
         hpx::performance_counters::counter_status status = 
                     get_counter_path_elements(name, p);
 
+        std::cout << "AAAA " << p.parentinstancename_ << " " << p.parentinstanceindex_
+         << " " << p.instancename_ <<  " " << p.instanceindex_  << std::endl; 
+
+
         stvars["counter_type"] = '/' + p.objectname_ + '/' + p.countername_;
         stvars["counter_parameters"] = p.parameters_;
         stvars["counter_parent_instance_name"] = p.parentinstancename_;
-        stvars["counter_parent_instance_index"] = p.parentinstanceindex_;
+        stvars["counter_parent_instance_index"] = std::to_string(p.parentinstanceindex_);
         stvars["counter_instance_name"] = p.instancename_;
-        stvars["counter_instance_index"] = p.instanceindex_;
+        stvars["counter_instance_index"] = std::to_string(p.instanceindex_);
     }
 
     void erase_counter_variables(){
@@ -1057,7 +1079,7 @@ namespace API
                             get_counter_path_elements(*dt.counter_name, p, ec);
 
 
-                string type_sampled = '/' + p.objectname_ + '/' + p.countername_;
+                std::string type_sampled = '/' + p.objectname_ + '/' + p.countername_;
 
                 //if is counter and belongs to the desired type 
                 if(&ec != &hpx::throws && type_sampled.find(*(type_ptr)) != -1){
@@ -1082,15 +1104,15 @@ namespace API
         std::regex rgx("proc::([^:]*)::");
         std::smatch match;
         
-        string filter = "";
+        std::string filter = "";
 
         if(std::regex_search(probe_name, match, rgx)){
-            filter = string(match[1]);
+            filter = std::string(match[1]);
         }
 
         std::string counter_name;
 
- std::cout << "APEX_SAMPLE_VALUE filter" << filter << endl;
+ std::cout << "APEX_SAMPLE_VALUE filter" << filter << std::endl;
 
 
         apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, filter](apex_context const& context)->int{
@@ -1102,8 +1124,13 @@ namespace API
                 //fill_counter_variables(*name_ptr, dt.counter_value);
 
                 if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+                    stvars["proc_name"] = *(dt.counter_name);
+                    dvars["proc_value"] = dt.counter_value;
+
                     std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
                     parse_probe(script.begin(), script.end());
+                    stvars["proc_name"] = "";
+                    dvars["proc_value"] = 0;
                 }
                 //erase_counter_variables();
             }
