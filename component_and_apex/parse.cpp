@@ -25,10 +25,15 @@ namespace API
 {
 
     typedef boost::variant<double, std::string> Variant;
+    //typedef boost::variant<double, int> Number;
+
     //std::map<std::string, std::map<std::vector<boost::variant<double, std::string>>, double>> aggvars
 
     #define VARIANT_DOUBLE 0
     #define VARIANT_STRING 1
+
+
+
 
 
 
@@ -325,6 +330,7 @@ namespace API
             factor                          
             >> *(   ('*' >> factor          )
                 |   ('/' >> factor          )
+                |   ('%' >> factor          )
                 )
             ;
 
@@ -440,6 +446,8 @@ namespace API
     double round_(double d){return std::round(d);}
     double ceil_(double d){return std::ceil(d);}
     double floor_(double d){return std::floor(d);}
+    double fmod(double a, double b){return std::fmod(a,b);}
+
 
 
 
@@ -507,6 +515,7 @@ namespace API
             factor                          [_val = _1]
             >> *(   ('*' >> factor          [_val = _val * _1])
                 |   ('/' >> factor          [_val = _val / _1])
+                |   ('%' >> factor          [_val = boost::phoenix::bind(&fmod, _val, _1)])
                 )
             ;
 
@@ -673,6 +682,7 @@ namespace API
             factor                          
             >> *(   ('*' >> factor          )
                 |   ('/' >> factor          )
+                |   ('%' >> factor          )
                 )
             ;
 
@@ -793,6 +803,7 @@ namespace API
             factor                          [_val = _1]
             >> *(   ('*' >> factor          [_val = _val * _1])
                 |   ('/' >> factor          [_val = _val / _1])
+                |   ('%' >> factor          [_val = boost::phoenix::bind(&fmod, _val, _1)])
                 )
             ;
 
