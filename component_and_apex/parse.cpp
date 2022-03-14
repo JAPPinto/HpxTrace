@@ -12,6 +12,8 @@
 #include <boost/bind.hpp>
 #include <boost/spirit/include/phoenix_bind.hpp>
 #include <boost/spirit/include/qi_lit.hpp>
+#include <task_identifier.hpp>
+#include <task_wrapper.hpp>
 #include "variables_map.cpp"
 #include "sample_value_event_data.hpp"
 #include "Aggregation.cpp"
@@ -25,24 +27,16 @@ namespace API
 {
 
     typedef boost::variant<double, std::string> Variant;
-    //typedef boost::variant<double, int> Number;
-
-    //std::map<std::string, std::map<std::vector<boost::variant<double, std::string>>, double>> aggvars
 
     #define VARIANT_DOUBLE 0
     #define VARIANT_STRING 1
 
 
-
-
-
-
-
     std::map<std::string,double> dvars; //global variables
     std::map<std::string, std::string> stvars; //global variables
-    //std::map<std::string, std::map<Variant,double>> aggvars; //aggregation variables
     std::map<std::string, Aggregation*> aggvars; //aggregation variables
     std::map<std::string,apex_event_type> event_types; 
+    std::vector<uint64_t> guids; 
     std::vector<hpx::util::interval_timer*> interval_timers; //for counter-create
     std::chrono::steady_clock::time_point start_time;
 
@@ -54,18 +48,6 @@ namespace API
     #define NON_EXISTANT -1
     #define DOUBLE_VAR 0
     #define STRING_VAR 1
-
-    int check_type(std::string name){
-        auto d_it = dvars.find(name);
-        if ( d_it != dvars.end()){
-            return DOUBLE_VAR;
-        }
-        auto st_it = stvars.find(name);
-        if ( st_it != stvars.end()){
-            return STRING_VAR;
-        }
-        return NON_EXISTANT;
-    }
 
     bool is_double_variable(std::string name){
         auto it = dvars.find(name);
@@ -83,47 +65,10 @@ namespace API
         return false;
     }
 
-    //check if is string literal, double variable or string variable
-    Variant evaluate_string(std::string s){
-        std::cout << "evaluate_string  " << s << "\n";
-
-
-
-        for(auto it = dvars.cbegin(); it != dvars.cend(); ++it)
-        {
-            std::cout << "double " << it->first << " " << it->second << "\n";
-        }
-        std::cout << std::endl;
-        for(auto it = stvars.cbegin(); it != stvars.cend(); ++it)
-        {
-            std::cout << "string " << it->first << " " << it->second << "\n";
-        }
-
-        auto d_it = dvars.find(s);
-        if ( d_it != dvars.end()){
-            std::cout << "evaluate_string double " << d_it->second << "\n";
-
-            return d_it->second;
-        }
-            std::cout << "evaluate_string string " <<  stvars[s]<< "\n";
-
-        return stvars[s];
-    }
-
-
-    void print_variable(std::string variable){
-
-        std::map<std::string,double>::iterator d_it = dvars.find(variable);
-        if ( d_it != dvars.end()){
-            std::cout << "API PRINT double:" << d_it->second << std::endl;
-        }
-        else{
-            std::cout << "API PRINT string: " << stvars[variable] << std::endl;
-        }
-    }
-
     void print_value(Variant v){
-        std::cout << "API PRINT:" << v << std::endl;
+        std::stringstream msg;
+        msg << "API PRINT: " << v << std::endl;
+        std::cout << msg.str();
     }
 
     std::string to_string(double d){
@@ -136,77 +81,6 @@ namespace API
     double to_double(std::string s){
         return std::stod(s);
     }
-
-
-/*
-        if(std::is_arithmetic(v.type())){
-            std::cout << "API PRINT double:" << boost::get<double>(v) << std::endl;
-            return;
-        }
-
-        std::map<std::string,double>::iterator d_it = dvars.find(variable);
-        if ( d_it != dvars.end()){
-            std::cout << "API PRINT double:" << d_it->second << std::endl;
-
-        }
-        else{
-            std::cout << "API PRINT string: " << stvars[variable] << std::endl;
-        }
-    }*/
-
-
-
-/*
-
-    void print_string_value(std::string s){
-        std::cout << "API PRINT STRING: " << s << std::endl;
-    }
-
-    std::string strjoin_func(Variant a, Variant b){
-        if(a.type() != typeid(std::string) || b.type() != typeid(std::string)){
-            throw "strjoin: invalid argument "; 
-        }
-        std::cout << "strjoin " << boost::get<string>(a)+boost::get<std::string>(b) << std::endl;
-
-        return boost::get<string>(a)+boost::get<string>(b);
-    }
-
-
-    std::string get_var_or_string(std::string s){
-        std::cout << "get_var_or_string " << s << std::endl;
-
-
-        std::smatch match;
-        std::regex rgx("{([.-}]*)}");
-        if(std::regex_search(s, match, rgx)){
-            return match[1];
-        }
-        else{
-            return stvars[s];
-        }
-    }
-
-    void store_variable(string name, Variant value){
-        std::cout << "store_variable " << name << value.which()  << std::endl;
-
-
-        if(value.which() == VARIANT_DOUBLE){
-            if(check_type(name) == STRING_VAR) 
-                throw  name + " variable already exists as a string";
-            std::cout << "store_variable double " << name << boost::get<double>(value)  << std::endl;
-
-            dvars[name] = boost::get<double>(value);
-        }
-        if(value.which() == VARIANT_STRING){
-            if(check_type(name) == DOUBLE_VAR) 
-                throw  name + " variable already exists as a double";
-            std::cout << "store_variable string " << name << boost::get<string>(value)  << std::endl;
-
-            stvars[name] = boost::get<string>(value);
-
-        }
-    }
-    */
 
     void aggregate(std::string name, std::vector<Variant> keys, double value){
         aggvars[name]->aggregate(keys, value);
@@ -222,16 +96,16 @@ namespace API
                 aggregations[name] = new_function;
 
                 if(new_function == "avg"){
-                    AverageAggregation* g = new AverageAggregation(name, new_function);
+                    AverageAggregation* g = new AverageAggregation(new_function);
                     aggvars[name] = g;
                 }
                 else if(new_function == "quantize"){
-                    Quantization* q = new Quantization(name, new_function);
+                    Quantization* q = new Quantization(new_function);
                     aggvars[name] = q;
                 }
                 //if count, sum, max, min
                 else if (new_function != "lquantize"){
-                    ScalarAggregation* g = new ScalarAggregation(name, new_function);
+                    ScalarAggregation* g = new ScalarAggregation(new_function);
                     aggvars[name] = g;
                 }
             }
@@ -252,7 +126,7 @@ namespace API
             std::vector<int> test = {lower_bound, upper_bound, step};
             if(it == lquantizes.end()){
                 lquantizes[name] = test;
-                LQuantization* q = new LQuantization(name,"lquantize",lower_bound,upper_bound,step);
+                LQuantization* q = new LQuantization("lquantize",lower_bound,upper_bound,step);
                 aggvars[name] = q;
             }
             else if(it->second != test){
@@ -279,10 +153,6 @@ namespace API
         using qi::_6;
         using qi::_val;
         using qi::_pass;
-
-        //using qi::string_;
-
-
         using qi::phrase_parse;
         using ascii::space;
         
@@ -291,8 +161,6 @@ namespace API
         typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
         typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
         typedef qi::rule<Iterator, ascii::space_type> Rule;
-
-
 
 
         //String rules
@@ -309,8 +177,6 @@ namespace API
         Rule string_value = string | string_function | var;
         Rule double_value = double_ | double_function | var;
 
-
-        //RETIRAR VAR DE VALUE?
         //Expression rules
 
         Rule string_expression = 
@@ -418,8 +284,8 @@ namespace API
 
         bool r = phrase_parse(
             first,                          /*< start iterator >*/
-            last,                              /*< end iterator >*/
-            actions,   /*< the parser >*/
+            last,                           /*< end iterator >*/
+            actions,                        /*< the parser >*/
             space
         );
 
@@ -449,11 +315,8 @@ namespace API
     double fmod(double a, double b){return std::fmod(a,b);}
 
 
-
-
-
     template <typename Iterator>
-    bool parse_probe(Iterator first, Iterator last) {
+    bool parse_actions(Iterator first, Iterator last) {
         using qi::double_;
         using qi::char_;
         using qi::_1;
@@ -465,8 +328,6 @@ namespace API
         using qi::_val;
         using qi::_pass;
         using boost::spirit::lit;
-
-
         using qi::phrase_parse;
         using ascii::space;
         
@@ -585,14 +446,14 @@ namespace API
 
         bool r = phrase_parse(
             first,                          /*< start iterator >*/
-            last,                              /*< end iterator >*/
-            actions,   /*< the parser >*/
+            last,                           /*< end iterator >*/
+            actions,                        /*< the parser >*/
             space
         );
 
 
         if (first != last){// fail if we did not get a full match
-            std::string error = "Variable with wrong type/uninitialized in action: \n" ;
+            std::string error = "Variable with wrong type/uninitialized variable in action: \n" ;
             for (; (*first) != ';' && first != last; first++)
             {
                 error += *first;
@@ -619,10 +480,7 @@ namespace API
         return false;
     }
 
-    bool and_operator(bool a, bool b){
-
-        return a && b;
-    }
+    bool and_operator(bool a, bool b){return a && b;}
 
 
     template <typename Iterator>
@@ -635,20 +493,13 @@ namespace API
         using qi::_3; 
         using qi::_val;
         using qi::_pass;
-
-        //using qi::string_;
-
-
         using qi::phrase_parse;
         using ascii::space;
         
 
-
         typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
         typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
         typedef qi::rule<Iterator, ascii::space_type> Rule;
-
-
 
 
         //String rules
@@ -862,10 +713,7 @@ namespace API
             std::cout << "FALHOU \n";
             return false;
         }
-        else{
-            std::cout << "DEU " << result <<  "\n";
 
-        }
 
 
         return result;
@@ -887,8 +735,16 @@ namespace API
 
     void register_probe(std::string probe_name, std::string probe_predicate, std::string script){
 
-        apex_event_type event_type = apex::register_custom_event(probe_name);
-        event_types[probe_name] = event_type;
+        apex_event_type event_type;
+        auto it = event_types.find(probe_name);
+        if ( it == event_types.end()){
+            event_type = apex::register_custom_event(probe_name);
+            event_types[probe_name] = event_type;
+        }
+        else{
+            event_type = it-> second;
+        }
+
 
         apex::register_policy(event_type,
           [script, probe_predicate](apex_context const& context)->int{
@@ -912,7 +768,7 @@ namespace API
                     stvars[arg.first] = arg.second; 
                 }
                 if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
-                    parse_probe(script.begin(), script.end());
+                    parse_actions(script.begin(), script.end());
                 }
                 
 
@@ -991,7 +847,7 @@ namespace API
 
                 if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
                     std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                    parse_probe(script.begin(), script.end());
+                    parse_actions(script.begin(), script.end());
                 }
 
                 erase_counter_variables();
@@ -1044,7 +900,7 @@ namespace API
 
                     if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
                         std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                        parse_probe(script.begin(), script.end());
+                        parse_actions(script.begin(), script.end());
                     }
                     erase_counter_variables();
                 }
@@ -1098,7 +954,7 @@ namespace API
 
                     if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
                         std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                        parse_probe(script.begin(), script.end());
+                        parse_actions(script.begin(), script.end());
                     }
 
                     erase_counter_variables();
@@ -1123,7 +979,6 @@ namespace API
 
         std::string counter_name;
 
- std::cout << "APEX_SAMPLE_VALUE filter" << filter << std::endl;
 
 
         apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, filter](apex_context const& context)->int{
@@ -1132,19 +987,102 @@ namespace API
             
             if((*dt.counter_name).find(filter) != -1){
 
-                //fill_counter_variables(*name_ptr, dt.counter_value);
+                stvars["proc_name"] = *(dt.counter_name);
+                dvars["proc_value"] = dt.counter_value;
 
                 if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
-                    stvars["proc_name"] = *(dt.counter_name);
-                    dvars["proc_value"] = dt.counter_value;
-
                     std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                    parse_probe(script.begin(), script.end());
-                    stvars["proc_name"] = "";
-                    dvars["proc_value"] = 0;
+                    parse_actions(script.begin(), script.end());
                 }
-                //erase_counter_variables();
+                stvars["proc_name"] = "";
+                dvars["proc_value"] = 0;
             }
+            return APEX_NOERROR;
+        });
+        
+    }
+
+        void register_task_probe(std::string probe_name ,std::string probe_predicate, std::string script){
+        std::regex rgx("task(?:::([^:]*)::(?:([^:]*)::)?)?");
+        std::smatch match;
+
+        std::regex_search(probe_name, match, rgx);
+            std::cout << "event:" << std::string(match[1]) << std::endl;
+            std::cout << "task:" << std::string(match[2]) << std::endl;
+        std::set<apex_event_type> events;
+        if(match[1] == ""){
+            events = {APEX_START_EVENT, APEX_RESUME_EVENT, APEX_STOP_EVENT, APEX_YIELD_EVENT};
+        }
+        else{
+            std::stringstream ss(match[1]);
+            while(ss.good()){
+                std::string substr;
+                getline( ss, substr, ',' );
+                if(substr == "start") events.insert(APEX_START_EVENT);
+                else if(substr == "resume") events.insert(APEX_RESUME_EVENT);
+                else if(substr == "stop") events.insert(APEX_STOP_EVENT);
+                else if(substr == "yield") events.insert(APEX_YIELD_EVENT);
+            }
+        }
+
+
+
+
+        std::string task_filter = match[2];
+
+
+
+        apex::register_policy(events, [script, probe_predicate, task_filter](apex_context const& context)->int{
+            
+            std::shared_ptr<apex::task_wrapper>* pp = reinterpret_cast<std::shared_ptr<apex::task_wrapper>*>(context.data);
+            std::shared_ptr<apex::task_wrapper> tw = *pp; 
+
+            std::string task_name = tw->task_id->get_name();
+
+            //std::cout << task_name << " " << tw->guid << std::endl;
+            if(task_filter != task_name && task_filter != "") return 0;
+
+            if(context.event_type == APEX_START_EVENT){
+                std::cout << "APEX_START_EVENT name " << std::endl;
+                stvars["event_type"] = "start";
+            }
+            else if(context.event_type == APEX_STOP_EVENT){
+                std::cout << "APEX_STOP_EVENT name " << std::endl;
+                stvars["event_type"] = "stop";
+
+            }
+            else if(context.event_type == APEX_RESUME_EVENT){
+                std::cout << "APEX_RESUME_EVENT name " << std::endl;
+                stvars["event_type"] = "resume";
+
+            }
+            else if(context.event_type == APEX_YIELD_EVENT){
+                std::cout << "APEX_YIELD_EVENT name " << std::endl;
+                stvars["event_type"] = "yield";
+            }
+
+            stvars["guid"] = std::to_string(tw->guid);
+
+            int i;
+            stvars["sid"] = "";
+            for (i = 0; i < guids.size(); i++){
+                if(tw->guid == guids[i])
+                    stvars["sid"] = std::to_string(i);
+            }
+            if(stvars["sid"] == "") {
+                guids.push_back(tw->guid);
+                stvars["sid"] = std::to_string(i);
+            }
+
+            if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+                parse_actions(script.begin(), script.end());
+            }
+
+
+
+            stvars["event_type"] = "";
+            stvars["guid"] = "";
+            stvars["sid"] = "";
 
 
             return APEX_NOERROR;
@@ -1157,12 +1095,14 @@ namespace API
 
 
         start_time = std::chrono::steady_clock::now();
-
-        std::regex rgx_cc("^[\\n\\r\\s]*(counter\\-create::[^:]+::[0-9]+::)(/[^/]*/)?\\{([^{}]*)\\}");
-        std::regex rgx_c("^[\\n\\r\\s]*(counter(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
-        std::regex rgx_ct("^[\\n\\r\\s]*(counter\\-type(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
-        std::regex rgx_proc("^[\\n\\r\\s]*(proc(?:::[^:]*::)?)(/[^/]*/)?\\{([^{}]*)\\}");
-        std::regex rgx_user("^[\\n\\r\\s]*([a-zA-Z0-9]+)(/[^/]*/)?\\{([^{}]*)\\}");
+        //(?: -> non-capturing group
+        std::regex rgx_cc("\\s*(counter\\-create::[^:]+::[0-9]+::)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
+        std::regex rgx_c("\\s*(counter(?:::[^:]*::)?)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
+        std::regex rgx_ct("\\s*(counter\\-type(?:::[^:]*::)?)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
+        std::regex rgx_proc("\\s*(proc(?:::[^:]*::)?)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
+        //a(::*::(*::)))
+        std::regex rgx_task("\\s*(task(?:::[^:]*::(?:[^:]*::)?)?)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
+        std::regex rgx_probe("\\s*([a-zA-Z0-9]+)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
 
 
 
@@ -1170,12 +1110,14 @@ namespace API
         std::smatch match;
 
 
+        int n_probes = 0;
 
         while (std::regex_search(script, match, rgx_cc) 
         || std::regex_search(script, match, rgx_c) 
         || std::regex_search(script, match, rgx_ct)
-        || std::regex_search(script, match, rgx_proc)  
-        || std::regex_search(script, match, rgx_user)){
+        || std::regex_search(script, match, rgx_proc) 
+        || std::regex_search(script, match, rgx_task)   
+        || std::regex_search(script, match, rgx_probe)){
 
 
             std::string probe_name = match[1];
@@ -1193,9 +1135,7 @@ namespace API
 
                 std::cout << "BEGIN " << probe_name << std::endl; 
 
-
-
-                parse_probe(probe_script.begin(), probe_script.end());
+                parse_actions(probe_script.begin(), probe_script.end());
             }
 
             else if(probe_name == "END"){
@@ -1207,7 +1147,7 @@ namespace API
                   [end_script]()->void{
          
                     
-                    parse_probe(end_script.begin(), end_script.end());    
+                    parse_actions(end_script.begin(), end_script.end());    
                 });
             }
 
@@ -1227,6 +1167,10 @@ namespace API
                 std::cout << "PROC " << probe_name << std::endl; 
                 register_proc_probe(probe_name, probe_predicate, probe_script);
             }
+            else if(probe_name.find("task") != -1){
+                std::cout << "TASK " << probe_name << std::endl; 
+                register_task_probe(probe_name, probe_predicate, probe_script);
+            }
             else{
                 
                 std::cout << "ELSE " << probe_name << std::endl; 
@@ -1234,28 +1178,30 @@ namespace API
                 register_probe(probe_name, probe_predicate, probe_script);
 
             }
-
-
+            //Remainder of script
             script = match.suffix();
+            n_probes++;
 
         }
 
+        if(n_probes == 0){
+            throw std::runtime_error("invalid probes");
+        }
 
 
+        //Print aggregations
         hpx::register_shutdown_function(
             []()->void{
-         
                 for (auto agg : aggvars){
                     //arg.first -> aggregation name
                     //arg.second -> aggregation object
                     std::cout << "Aggregation " << agg.first << ":" << std::endl;
                     agg.second->print();
-                }
-                           
+                }    
             }
         );
     }
-
+    //destruct interval_timers
     void finalize(){
         for (auto  element : interval_timers) {
             std::cout << "finalize\n";

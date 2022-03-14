@@ -22,7 +22,7 @@ using hpx::performance_counters::performance_counter;
 
 std::atomic<std::uint64_t> count(0);
 
-
+    
 
 
 int hpx_main(hpx::program_options::variables_map& vm)
@@ -38,17 +38,40 @@ int hpx_main(hpx::program_options::variables_map& vm)
 
     if(script == "") script = "abc{x=3; x = x * 10;}";
 
+    std::string file = vm["file"].as<std::string>();
 
+    if(file != ""){
+        std::ifstream t(file);
+        std::stringstream buffer;
+        buffer << t.rdbuf();
+        script = buffer.str();
+    }
+
+    std::cout << file << std::endl;
+
+    std::cout << script << std::endl;
     API::parse_script(script);
 
 
-
+    usleep(1000000);
 
 
     API::trigger_probe("abc", {{"a",5}}, {{"s", "ola"}} );
+    API::trigger_probe("abc", {{"a",15}}, {{"s", "ola"}} );
+    API::trigger_probe("abc", {{"a",30}}, {{"s", "ola"}} );
+    API::trigger_probe("abc", {{"a",99}}, {{"s", "ola"}} );
+    API::trigger_probe("abc", {{"a",23}}, {{"s", "ola"}} );
+    API::trigger_probe("abc", {{"a",72}}, {{"s", "ola"}} );
+    API::trigger_probe("abc", {{"a",3}}, {{"s", "ola"}} );
+
+
+
     //API::trigger_probe("xyz", arguments_values);
 
-    //API::finalize();
+    API::finalize();
+
+
+
     hpx::finalize();
     return 0;
 }
@@ -67,6 +90,12 @@ int main(int argc, char* argv[]) {
         ( "script",
           hpx::program_options::value<std::string>()->default_value(""),
           "script for tracing")
+        ;
+
+    desc_commandline.add_options()
+        ( "file",
+          hpx::program_options::value<std::string>()->default_value(""),
+          "file with script for tracing")
         ;
 
 

@@ -4,10 +4,9 @@ class Aggregation
 {
     typedef boost::variant<double, std::string> Variant;
     public:   
-        std::string name;
         std::string function;
 
-        Aggregation(std::string n, std::string f) : name(n) , function(f){}
+        Aggregation(std::string f) : function(f){}
 
         virtual void aggregate(std::vector<Variant> keys, double d){}
 
@@ -21,7 +20,7 @@ class ScalarAggregation : public Aggregation
     public:
         std::map<std::vector<Variant>, double> values;
 
-        ScalarAggregation(std::string n, std::string f) : Aggregation(n,f){}
+        ScalarAggregation(std::string f) : Aggregation(f){}
 
 
         void aggregate(std::vector<Variant> keys, double d){
@@ -63,7 +62,7 @@ class AverageAggregation : public Aggregation
         //<average,count>
         std::map<std::vector<Variant>, std::pair<double,int>> values;
 
-        AverageAggregation(std::string n, std::string f) : Aggregation(n,f){}
+        AverageAggregation(std::string f) : Aggregation(f){}
 
 
         void aggregate(std::vector<Variant> keys, double d){
@@ -98,7 +97,7 @@ class Quantization : public Aggregation
     public:
         std::map<std::vector<Variant>, std::vector<int>> frequencies;
 
-        Quantization(std::string n, std::string f) : Aggregation(n,f){}
+        Quantization(std::string f) : Aggregation(f){}
 
         void aggregate(std::vector<Variant> keys, double d){
 
@@ -129,8 +128,9 @@ class Quantization : public Aggregation
                 std::vector<int>& dist = v.second;
                 //there will always be one element bigger than 0
 
-                
+                //remove initial zeroes
                 for (i = 0; i < 32 && !dist[i]; i++);
+                //remove final zeroes
                 for (j = 31; j >= i && !dist[j]; j--);
                 for (; i <= j; i++)
                 {
@@ -151,8 +151,8 @@ class LQuantization : public Aggregation
         double lower_bound, upper_bound, step;
 
 
-        LQuantization(std::string n, std::string f, double lb, double up, double s):
-            Aggregation(n,f), lower_bound(lb), upper_bound(up), step(s){} 
+        LQuantization(std::string f, double lb, double up, double s):
+            Aggregation(f), lower_bound(lb), upper_bound(up), step(s){} 
 
         
 
