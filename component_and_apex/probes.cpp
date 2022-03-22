@@ -3,7 +3,7 @@
 #include <hpx/include/util.hpp>
 #include <hpx/modules/program_options.hpp>
 #include <unistd.h>
-
+#include <stdlib.h>  
 #include "comp.hpp"
 #include "parse.cpp"
 
@@ -13,7 +13,33 @@
 
 #include "argument.cpp"
 
+//[fib_action
+// forward declaration of the Fibonacci function
+std::uint64_t test(std::uint64_t n);
 
+// This is to generate the required boilerplate we need for the remote
+// invocation to work.
+HPX_PLAIN_ACTION(test, test_action);
+//]
+
+///////////////////////////////////////////////////////////////////////////////
+//[fib_func
+std::uint64_t test(std::uint64_t n)
+{
+std::cout << "test " << n << std::endl;
+    hpx::naming::id_type const locality_id = hpx::find_here();
+    usleep(1000000);
+char * buffer;  
+buffer = (char*) malloc (1+1);
+    std::vector<int>* v = new std::vector<int>;
+    if (n == 0)
+        return 0;
+    test_action fib;
+    hpx::future<std::uint64_t> n1 =
+        hpx::async(fib, locality_id, n - 1);
+    return n1.get();
+
+}
 
 
 
@@ -53,8 +79,8 @@ int hpx_main(hpx::program_options::variables_map& vm)
     API::parse_script(script);
 
 
-    usleep(1000000);
-
+    //usleep(1000000);
+    test(2);
 
     API::trigger_probe("abc", {{"a",5}}, {{"s", "ola"}} );
     API::trigger_probe("abc", {{"a",15}}, {{"s", "ola"}} );
@@ -98,9 +124,15 @@ int main(int argc, char* argv[]) {
           "file with script for tracing")
         ;
 
+    // Initialize and run HPX
+    //int status =  hpx::init(desc_commandline, argc, argv);
 
     // Initialize and run HPX
-    int status =  hpx::init(desc_commandline, argc, argv);
+    hpx::init_params init_args;
+    init_args.desc_cmdline = desc_commandline;
+    int status =  hpx::init(argc, argv, init_args);
+
+
 
 
     return 0;
