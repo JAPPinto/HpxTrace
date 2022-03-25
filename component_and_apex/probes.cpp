@@ -4,7 +4,6 @@
 #include <hpx/modules/program_options.hpp>
 #include <unistd.h>
 #include <stdlib.h>  
-#include "comp.hpp"
 #include "parse.cpp"
 
 
@@ -17,6 +16,8 @@
 // forward declaration of the Fibonacci function
 std::uint64_t test(std::uint64_t n);
 
+
+
 // This is to generate the required boilerplate we need for the remote
 // invocation to work.
 HPX_PLAIN_ACTION(test, test_action);
@@ -26,20 +27,39 @@ HPX_PLAIN_ACTION(test, test_action);
 //[fib_func
 std::uint64_t test(std::uint64_t n)
 {
-std::cout << "test " << n << std::endl;
-    hpx::naming::id_type const locality_id = hpx::find_here();
-    usleep(1000000);
-char * buffer;  
-buffer = (char*) malloc (1+1);
-    std::vector<int>* v = new std::vector<int>;
+std::cout << "test " << n << " " <<  n % 2 << std::endl;
+
+    //Find all localities
+    std::vector<hpx::naming::id_type> localities = hpx::find_all_localities();
+
+    hpx::naming::id_type const locality_id = localities[localities.size()-1];
+    //usleep(1000000);
+    //usleep(100000);
+
+    if(hpx::find_here() == localities[0]){
+        API::trigger_probe("abc", {{"a",0}}, {{"s", "ola"}} );
+        std::cout << "loc " <<  0 << std::endl;
+    }
+    else{
+        API::trigger_probe("abc", {{"a",1}}, {{"s", "ola"}} );
+        std::cout << "loc " <<  1 << std::endl;
+    } 
+
+
     if (n == 0)
         return 0;
     test_action fib;
-    hpx::future<std::uint64_t> n1 =
-        hpx::async(fib, locality_id, n - 1);
-    return n1.get();
+    std::uint64_t x;
+        hpx::future<std::uint64_t> n1 = hpx::async(fib, localities[ n % 2], n - 1);
+        x = n1.get();
+   // for(auto loc : localities){
+    //}
+
+    return x;
 
 }
+
+
 
 
 
@@ -73,22 +93,16 @@ int hpx_main(hpx::program_options::variables_map& vm)
         script = buffer.str();
     }
 
-    std::cout << file << std::endl;
 
-    std::cout << script << std::endl;
-    API::parse_script(script);
+
+    API::init(script);
+
+
+    //API::parse_script(script);
 
 
     //usleep(1000000);
-    test(2);
-
-    API::trigger_probe("abc", {{"a",5}}, {{"s", "ola"}} );
-    API::trigger_probe("abc", {{"a",15}}, {{"s", "ola"}} );
-    API::trigger_probe("abc", {{"a",30}}, {{"s", "ola"}} );
-    API::trigger_probe("abc", {{"a",99}}, {{"s", "ola"}} );
-    API::trigger_probe("abc", {{"a",23}}, {{"s", "ola"}} );
-    API::trigger_probe("abc", {{"a",72}}, {{"s", "ola"}} );
-    API::trigger_probe("abc", {{"a",3}}, {{"s", "ola"}} );
+    test(10);
 
 
 
