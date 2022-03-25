@@ -16,6 +16,11 @@ add_hpx_component( comp
     HEADERS comp.hpp comp_server/comp.hpp
 )
 
+add_hpx_component( script_data
+    ESSENTIAL
+    SOURCES script_data.cpp
+    HEADERS script_data.hpp script_data_server/script_data.hpp
+)
  
 add_hpx_executable( apex_action_count
     ESSENTIAL
@@ -26,6 +31,6 @@ add_hpx_executable( apex_action_count
 add_hpx_executable( probes
     ESSENTIAL
     SOURCES probes.cpp
-    DEPENDENCIES comp_component 
+    DEPENDENCIES script_data_component 
 )
 

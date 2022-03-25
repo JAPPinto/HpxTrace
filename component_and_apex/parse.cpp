@@ -15,6 +15,7 @@
 #include <boost/spirit/include/qi_lit.hpp>
 #include <task_identifier.hpp>
 #include <task_wrapper.hpp>
+#include <event_listener.hpp>
 #include "variables_map.cpp"
 #include "sample_value_event_data.hpp"
 #include "Aggregation.cpp"
@@ -833,7 +834,7 @@ void register_user_probe(std::string probe_name, std::string predicate, std::str
                 parse_actions(actions.begin(), actions.end(), comp);
             }
 
-            stvars["locality"] = 0;
+            stvars["locality"] = "";
 
             
 
@@ -1097,7 +1098,7 @@ void fill_task_variables(std::shared_ptr<apex::task_wrapper> tw, apex_event_type
 
     if(event_type == APEX_STOP_EVENT || event_type == APEX_YIELD_EVENT){
         if(event_type == APEX_STOP_EVENT) stvars["event"] = "stop";
-        if(event_type == APEX_YIELD_EVENT) stvars["event"] = "yield";
+        else if(event_type == APEX_YIELD_EVENT) stvars["event"] = "yield";
         apex::profiler *prof = tw->prof; 
         dvars["start"] = (double) prof->start_ns;
         dvars["end"] = (double) prof->end_ns;        
@@ -1108,7 +1109,7 @@ void fill_task_variables(std::shared_ptr<apex::task_wrapper> tw, apex_event_type
     }
     else{
         if(event_type == APEX_START_EVENT) stvars["event"] = "start";
-        if(event_type == APEX_RESUME_EVENT) stvars["event"] = "resume";
+        else if(event_type == APEX_RESUME_EVENT) stvars["event"] = "resume";
     }
 }
 
@@ -1163,25 +1164,70 @@ void register_task_probe(std::string probe_name ,std::string predicate, std::str
 
 HPX_DEFINE_PLAIN_ACTION(register_task_probe, register_task_probe_action); 
 
+void fill_message_variables(apex::message_event_data event_data, apex_event_type event_type){
+    stvars["locality"] = hpx::get_locality_name();
+
+    if(event_type == APEX_SEND) stvars["event"] = "send";
+    else if(event_type == APEX_RECV) stvars["event"] = "receive";
+
+    dvars["tag"] = event_data.tag;
+    dvars["size"] = event_data.size;
+    dvars["source_rank"] = event_data.source_rank;
+    dvars["source_thread"] = event_data.source_thread;
+    dvars["target"] = event_data.target;
+}
+
+void clear_message_variables(apex::message_event_data event_data){
+    stvars["locality"] = "";
+
+    stvars["event"] = "";
+
+    dvars["tag"] = 0;
+    dvars["size"] = 0;
+    dvars["source_rank"] = 0;
+    dvars["source_thread"] = 0;
+    dvars["target"] = 0;
+}
+
+void register_message_probe(std::string probe_name, std::string predicate, std::string actions, script_data comp){
+    std::regex rgx("message\\[([^\\]]*)\\]");
+
+    std::smatch match;
+
+    std::regex_search(probe_name, match, rgx);
+    std::set<apex_event_type> events;
+
+    std::stringstream ss(match[1]);
+    while(ss.good()){
+        std::string substr;
+        getline( ss, substr, ',' );
+        if(substr == "send") events.insert(APEX_SEND);
+        else if(substr == "receive") events.insert(APEX_RECV);
+    }
 
 
-void register_send_probe(std::string probe_name ,std::string probe_predicate, std::string script){
 
-    //Initialize task variables so if users try to read profiler variables at start/resume it returns empty values
-    clear_task_variables();
 
-    apex::register_policy(APEX_SEND, [script, probe_predicate](apex_context const& context)->int{
+    apex::register_policy(events, [predicate, actions, comp](apex_context const& context)->int{
         
-        if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
-            parse_actions(script.begin(), script.end(), global_data);
+
+        apex::message_event_data event_data = *reinterpret_cast<apex::message_event_data*>(context.data);
+
+        fill_message_variables(event_data, context.event_type);
+
+        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end())){
+            parse_actions(actions.begin(), actions.end(), comp);
         }
 
+        clear_message_variables(event_data);
 
         return APEX_NOERROR;
     });
     
 }
 
+HPX_DEFINE_PLAIN_ACTION(register_message_probe, register_message_probe_action); 
+ 
 
 
 void parse_script(std::string script){
@@ -1198,8 +1244,7 @@ void parse_script(std::string script){
     std::regex rgx_ct("\\s*(counter\\-type(?:::[^:]*::)?)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
     std::regex rgx_proc("\\s*(proc(?:::[^:]*::)?)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
     std::regex rgx_task("\\s*(task\\[[^\\]]*\\](?:::[^{]*)?)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
-    std::regex rgx_send("\\s*(send)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
-    std::regex rgx_receive("\\s*(receive)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
+    std::regex rgx_message("\\s*(message\\[[^\\]]*\\])\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
     std::regex rgx_probe("\\s*([a-zA-Z0-9]+)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
 
 
@@ -1214,14 +1259,13 @@ void parse_script(std::string script){
     || std::regex_search(script, match, rgx_ct)
     || std::regex_search(script, match, rgx_proc) 
     || std::regex_search(script, match, rgx_task) 
-    || std::regex_search(script, match, rgx_send)     
+    || std::regex_search(script, match, rgx_message)     
     || std::regex_search(script, match, rgx_probe)){
 
 
         std::string probe_name = match[1];
         std::string probe_predicate = match[2];
         std::string probe_script = match[3];
-        std::cout << probe_name << " " << probe_script << "\n";
 
         if(probe_predicate != "") 
             validate_predicate(probe_predicate.begin(), probe_predicate.end());
@@ -1272,9 +1316,12 @@ void parse_script(std::string script){
                 register_action(loc, probe_name, probe_predicate, probe_script, global_data);
             }
         }
-        else if(probe_name.find("send") != -1){
-            std::cout << "SEND " << probe_name << std::endl; 
-            register_send_probe(probe_name, probe_predicate, probe_script);
+        else if(probe_name.find("message") != -1){
+            std::cout << "MESSAGE " << probe_name << std::endl; 
+            for(auto loc : localities){
+                register_message_probe_action register_action;
+                register_action(loc, probe_name, probe_predicate, probe_script, global_data);
+            }
         }
         else{
             std::cout << "ELSE " << probe_name << std::endl; 
@@ -1333,5 +1380,6 @@ void finalize(){
 }
 HPX_REGISTER_ACTION(API::register_user_probe_action, api_register_user_probe_action);
 HPX_REGISTER_ACTION(API::register_task_probe_action, api_register_task_probe_action);
+HPX_REGISTER_ACTION(API::register_message_probe_action, api_register_message_probe_action);
 
 HPX_REGISTER_ACTION(API::parse_script_action, api_parse_script_action);
