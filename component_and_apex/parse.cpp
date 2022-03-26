@@ -27,48 +27,6 @@
 #define BOOST_SPIRIT_USE_PHOENIX_V3 1
 
 
-void register_local_policy(const apex_event_type when, std::function<int(apex_context const&)> f){
-    apex::register_policy(when, f);
-}
-
-void register_local_policyy(int x, const apex_event_type when,std::function<int(apex_context const&)> f){
-    x++;
-}
-
-//HPX_PLAIN_ACTION(register_local_policyy, register_local_policy_action);
-
-//Register apex policy in all localities
-void register_global_policy(const apex_event_type when, std::function<int(apex_context const&)> f){
-
-    std::vector<hpx::naming::id_type> localities = hpx::find_all_localities();
-
-    for(auto loc : localities){
-        apex::register_policy(when, f);    
-    }
-}
-
-
-//Register apex policy in all localities
-/*std::set<apex_policy_handle*> register_policy(std::set<apex_event_type> when,
-                    std::function<int(apex_context const&)> f){
-
-    std::vector<hpx::naming::id_type> localities = hpx::find_all_localities();
-    std::set<apex_policy_handle*> handles;
-
-    for(auto loc : localities){
-        handles.insert(apex::register_policy(when, f));    
-    }
-
-    return handles;
-}*/
-
-
-
-
-
-
-
-
 
 namespace API
 {
@@ -79,8 +37,8 @@ typedef boost::variant<double, std::string> Variant;
 #define VARIANT_STRING 1
 
 
-std::map<std::string,double> dvars; //global variables
-std::map<std::string, std::string> stvars; //global variables
+std::map<std::string,double> probe_dvars; //global variables
+std::map<std::string, std::string> probe_stvars; //global variables
 std::map<std::string, Aggregation*> aggvars; //aggregation variables
 std::map<std::string,apex_event_type> event_types; 
 std::vector<hpx::util::interval_timer*> interval_timers; //for counter-create
@@ -96,17 +54,17 @@ namespace phx = boost::phoenix;
 #define DOUBLE_VAR 0
 #define STRING_VAR 1
 
-bool is_double_variable(std::string name){
-    auto it = dvars.find(name);
-    if ( it != dvars.end()){
+bool is_double_variable(std::map<std::string,double>& probe_dvars, std::string name){
+    auto it = probe_dvars.find(name);
+    if ( it != probe_dvars.end()){
         return true;
     }
     return false;
 }
 
-bool is_string_variable(std::string name){
-    auto it = stvars.find(name);
-    if ( it != stvars.end()){
+bool is_string_variable( std::map<std::string,std::string>& probe_stvars, std::string name){
+    auto it = probe_stvars.find(name);
+    if ( it != probe_stvars.end()){
         return true;
     }
     return false;
@@ -215,8 +173,8 @@ bool validate_actions(Iterator first, Iterator last) {
     RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
     RuleString var = (char_("a-zA-Z_") >> *char_("a-zA-Z0-9_"));
-   // RuleString string_var = (var[_pass = boost::phoenix::bind(&is_string_variable, _1)])[_val = phx::ref(stvars)[_1]];
-    //RuleDouble double_var = (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(dvars)[_1]];
+   // RuleString string_var = (var[_pass = boost::phoenix::bind(&is_string_variable, _1)])[_val = phx::ref(probe_stvars)[_1]];
+    //RuleDouble double_var = (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(probe_dvars)[_1]];
     //Function rules
     Rule string_function;
     Rule double_function;
@@ -363,7 +321,8 @@ double fmod(double a, double b){return std::fmod(a,b);}
 
 
 template <typename Iterator>
-bool parse_actions(Iterator first, Iterator last, script_data global_data) {
+bool parse_actions(Iterator first, Iterator last, script_data global_data,
+    std::map<std::string,double>& probe_dvars, std::map<std::string,std::string>& probe_stvars) {
     using qi::double_;
     using qi::char_;
     using qi::_1;
@@ -393,15 +352,15 @@ bool parse_actions(Iterator first, Iterator last, script_data global_data) {
     //Var rules
     RuleString var = (char_("a-zA-Z_") >> *char_("a-zA-Z0-9_"));
     
-    RuleString local_string_var = (var[_pass = boost::phoenix::bind(&is_string_variable, _1)])
-                                  [_val = phx::ref(stvars)[_1]];
+    RuleString local_string_var = (var[_pass = boost::phoenix::bind(&is_string_variable, phx::ref(probe_stvars), _1)])
+                                  [_val = phx::ref(probe_stvars)[_1]];
     RuleString global_string_var = (var[_pass = boost::phoenix::bind(&script_data::is_string, &global_data, _1)])
                                    [_val = boost::phoenix::bind(&script_data::get_string, &global_data, _1)];
     RuleString string_var = local_string_var | global_string_var;
 
 
-    RuleDouble local_double_var = (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])
-                            [_val = phx::ref(dvars)[_1]];
+    RuleDouble local_double_var = (var[_pass = boost::phoenix::bind(&is_double_variable, phx::ref(probe_dvars), _1)])
+                            [_val = phx::ref(probe_dvars)[_1]];
     RuleDouble global_double_var = (var[_pass = boost::phoenix::bind(&script_data::is_double, &global_data, _1)])
                             [_val = boost::phoenix::bind(&script_data::get_double, &global_data, _1)];
     RuleDouble double_var = local_double_var | global_double_var;
@@ -662,8 +621,8 @@ bool validate_predicate(Iterator first, Iterator last) {
 
 
 template <typename Iterator>
-bool parse_predicate(Iterator first, Iterator last) {
-
+bool parse_predicate(Iterator first, Iterator last, script_data global_data,
+    std::map<std::string,double>& probe_dvars, std::map<std::string,std::string>& probe_stvars) {
     using qi::double_;
     using qi::char_;
     using qi::_1;
@@ -686,8 +645,20 @@ bool parse_predicate(Iterator first, Iterator last) {
     RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
     RuleString var = (char_("a-zA-Z_") >> *char_("a-zA-Z0-9_"));
-    RuleString string_var = (var[_pass = boost::phoenix::bind(&is_string_variable, _1)])[_val = phx::ref(stvars)[_1]];
-    RuleDouble double_var = (var[_pass = boost::phoenix::bind(&is_double_variable, _1)])[_val = phx::ref(dvars)[_1]];
+
+    RuleString local_string_var = (var[_pass = boost::phoenix::bind(&is_string_variable, phx::ref(probe_stvars), _1)])
+                                  [_val = phx::ref(probe_stvars)[_1]];
+    RuleString global_string_var = (var[_pass = boost::phoenix::bind(&script_data::is_string, &global_data, _1)])
+                                   [_val = boost::phoenix::bind(&script_data::get_string, &global_data, _1)];
+    RuleString string_var = local_string_var | global_string_var;
+
+
+    RuleDouble local_double_var = (var[_pass = boost::phoenix::bind(&is_double_variable, phx::ref(probe_dvars), _1)])
+                            [_val = phx::ref(probe_dvars)[_1]];
+    RuleDouble global_double_var = (var[_pass = boost::phoenix::bind(&script_data::is_double, &global_data, _1)])
+                            [_val = boost::phoenix::bind(&script_data::get_double, &global_data, _1)];
+    RuleDouble double_var = local_double_var | global_double_var;
+
     //Function rules
     RuleString string_function;
     RuleDouble double_function;
@@ -808,33 +779,31 @@ void register_user_probe(std::string probe_name, std::string predicate, std::str
 
     apex::register_policy(event_type,
       [predicate, actions, comp](apex_context const& context)->int{
-            //std::cout << context.event_type << std::endl;
-            //vector<MyClass*>& v = *reinterpret_cast<vector<MyClass*> *>(voidPointerName);
             arguments& args = *reinterpret_cast<arguments*>(context.data);
+
             std::map<std::string,double> double_arguments = args.first;
-            std::map<std::string,std::string> string_arguments  = args.second;
-
-
-
+            std::map<std::string,double> probe_dvars;
             for (auto const& arg : double_arguments){
                 //arg.first -> variable name
                 //arg.second -> variable value
-                dvars[arg.first] = arg.second; 
+                probe_dvars[arg.first] = arg.second; 
             }
 
+            std::map<std::string,std::string> string_arguments  = args.second;
+            std::map<std::string,std::string> probe_stvars;
             for (auto const& arg : string_arguments){
                 //arg.first -> variable name
                 //arg.second -> variable value
-                stvars[arg.first] = arg.second; 
+                probe_stvars[arg.first] = arg.second; 
             }
 
-            stvars["locality"] = hpx::get_locality_name();
+            probe_stvars["locality"] = hpx::get_locality_name();
 
-            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end())){
-                parse_actions(actions.begin(), actions.end(), comp);
+            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
+                parse_actions(actions.begin(), actions.end(), comp, probe_dvars, probe_stvars);
             }
 
-            stvars["locality"] = "";
+            probe_stvars["locality"] = "";
 
             
 
@@ -855,9 +824,12 @@ bool read_counter(hpx::performance_counters::performance_counter counter, std::s
 }
 
 
-void fill_counter_variables(std::string name, double value){
-    stvars["counter_name"] = name;
-    dvars["counter_value"] = value;
+void fill_counter_variables(std::string name, double value, 
+        std::map<std::string,double>& probe_dvars, 
+        std::map<std::string,std::string>& probe_stvars){
+
+    probe_stvars["counter_name"] = name;
+    probe_dvars["counter_value"] = value;
 
     hpx::performance_counters::counter_path_elements p;
 
@@ -868,29 +840,29 @@ void fill_counter_variables(std::string name, double value){
      << " " << p.instancename_ <<  " " << p.instanceindex_  << std::endl; 
 
 
-    stvars["counter_type"] = '/' + p.objectname_ + '/' + p.countername_;
-    stvars["counter_parameters"] = p.parameters_;
-    stvars["counter_parent_instance_name"] = p.parentinstancename_;
-    stvars["counter_parent_instance_index"] = std::to_string(p.parentinstanceindex_);
-    stvars["counter_instance_name"] = p.instancename_;
-    stvars["counter_instance_index"] = std::to_string(p.instanceindex_);
+    probe_stvars["counter_type"] = '/' + p.objectname_ + '/' + p.countername_;
+    probe_stvars["counter_parameters"] = p.parameters_;
+    probe_stvars["counter_parent_instance_name"] = p.parentinstancename_;
+    probe_stvars["counter_parent_instance_index"] = std::to_string(p.parentinstanceindex_);
+    probe_stvars["counter_instance_name"] = p.instancename_;
+    probe_stvars["counter_instance_index"] = std::to_string(p.instanceindex_);
 }
 
 void erase_counter_variables(){
-    dvars.erase("counter_value");
-    stvars.erase("counter_name");
+    probe_dvars.erase("counter_value");
+    probe_stvars.erase("counter_name");
 
-    stvars.erase("counter_type");
-    stvars.erase("counter_parameters");
-    stvars.erase("counter_parent_instance_name");
-    stvars.erase("counter_parent_instance_index");
-    stvars.erase("counter_instance_name");
-    stvars.erase("counter_instance_index");
+    probe_stvars.erase("counter_type");
+    probe_stvars.erase("counter_parameters");
+    probe_stvars.erase("counter_parent_instance_name");
+    probe_stvars.erase("counter_parent_instance_index");
+    probe_stvars.erase("counter_instance_name");
+    probe_stvars.erase("counter_instance_index");
 
 }
 
 
-void register_counter_create_probe(std::string probe_name ,std::string probe_predicate, std::string script){
+void register_counter_create_probe(std::string probe_name ,std::string predicate, std::string actions, script_data comp){
 
     std::regex rgx("counter\\-create::([^:]+)::([0-9]+)::");
     std::smatch match;
@@ -903,20 +875,23 @@ void register_counter_create_probe(std::string probe_name ,std::string probe_pre
 
 
 
-    apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, name_ptr](apex_context const& context)->int{
+    apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, name_ptr, comp](apex_context const& context)->int{
         
         sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
             
         if(*dt.counter_name == *name_ptr){
 
-            fill_counter_variables(*name_ptr, dt.counter_value);
+            std::map<std::string,double> probe_dvars;
+            std::map<std::string,std::string> probe_stvars;
 
-            if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+            fill_counter_variables(*name_ptr, dt.counter_value, probe_dvars, probe_stvars);
+
+            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
                 std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                parse_actions(script.begin(), script.end(), global_data);
+                parse_actions(actions.begin(), actions.end(), global_data, probe_dvars, probe_stvars);
             }
 
-            erase_counter_variables();
+            //erase_counter_variables();
         }
 
 
@@ -936,7 +911,7 @@ void register_counter_create_probe(std::string probe_name ,std::string probe_pre
 
 }
 
-void register_counter_probe(std::string probe_name ,std::string probe_predicate, std::string script){
+void register_counter_probe(std::string probe_name ,std::string predicate, std::string actions, script_data comp){
 
     std::regex rgx("counter::([^:]+)::");
     std::smatch match;
@@ -956,19 +931,22 @@ void register_counter_probe(std::string probe_name ,std::string probe_predicate,
 
 
 
-        apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, name_ptr](apex_context const& context)->int{
+        apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, name_ptr, comp](apex_context const& context)->int{
             
             sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
             
             if(*dt.counter_name == *name_ptr){
 
-                fill_counter_variables(*name_ptr, dt.counter_value);
+                std::map<std::string,double> probe_dvars;
+                std::map<std::string,std::string> probe_stvars;
 
-                if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+                fill_counter_variables(*name_ptr, dt.counter_value, probe_dvars, probe_stvars);
+
+                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
                     std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                    parse_actions(script.begin(), script.end(), global_data);
+                    parse_actions(actions.begin(), actions.end(), global_data, probe_dvars, probe_stvars);
                 }
-                erase_counter_variables();
+                //erase_counter_variables();
             }
 
 
@@ -980,7 +958,7 @@ void register_counter_probe(std::string probe_name ,std::string probe_predicate,
     }
 }
 
-void register_counter_type_probe(std::string probe_name ,std::string probe_predicate, std::string script){
+void register_counter_type_probe(std::string probe_name ,std::string predicate, std::string actions, script_data comp){
 
     std::regex rgx("counter\\-type::([^:]+)::");
     std::smatch match;
@@ -1000,7 +978,7 @@ void register_counter_type_probe(std::string probe_name ,std::string probe_predi
 
 
 
-        apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, type_ptr](apex_context const& context)->int{
+        apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, type_ptr, comp](apex_context const& context)->int{
             
             sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
             
@@ -1016,14 +994,16 @@ void register_counter_type_probe(std::string probe_name ,std::string probe_predi
 
             //if is counter and belongs to the desired type 
             if(&ec != &hpx::throws && type_sampled.find(*(type_ptr)) != -1){
-                fill_counter_variables(*dt.counter_name, dt.counter_value);
 
-                if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+                std::map<std::string,double> probe_dvars;
+                std::map<std::string,std::string> probe_stvars;
+
+                fill_counter_variables(*dt.counter_name, dt.counter_value, probe_dvars, probe_stvars);
+
+                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
                     std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                    parse_actions(script.begin(), script.end(), global_data);
+                    parse_actions(actions.begin(), actions.end(), global_data, probe_dvars, probe_stvars);
                 }
-
-                erase_counter_variables();
             }
 
 
@@ -1032,7 +1012,7 @@ void register_counter_type_probe(std::string probe_name ,std::string probe_predi
     }
 }
 
-void register_proc_probe(std::string probe_name ,std::string probe_predicate, std::string script){
+void register_proc_probe(std::string probe_name ,std::string predicate, std::string actions, script_data comp){
 
     std::regex rgx("proc::([^:]*)::");
     std::smatch match;
@@ -1047,21 +1027,23 @@ void register_proc_probe(std::string probe_name ,std::string probe_predicate, st
 
 
 
-    apex::register_policy(APEX_SAMPLE_VALUE, [script, probe_predicate, filter](apex_context const& context)->int{
+    apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, filter, comp](apex_context const& context)->int{
         
         sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
         
         if((*dt.counter_name).find(filter) != -1){
 
-            stvars["proc_name"] = *(dt.counter_name);
-            dvars["proc_value"] = dt.counter_value;
+            std::map<std::string,double> probe_dvars;
+            std::map<std::string,std::string> probe_stvars;
 
-            if(probe_predicate == "" || parse_predicate(probe_predicate.begin(), probe_predicate.end())){
+            probe_stvars["proc_name"] = *(dt.counter_name);
+            probe_dvars["proc_value"] = dt.counter_value;
+
+            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
                 std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                parse_actions(script.begin(), script.end(), global_data);
+                parse_actions(actions.begin(), actions.end(), global_data, probe_dvars, probe_stvars);
             }
-            stvars["proc_name"] = "";
-            dvars["proc_value"] = 0;
+
         }
         return APEX_NOERROR;
     });
@@ -1069,47 +1051,52 @@ void register_proc_probe(std::string probe_name ,std::string probe_predicate, st
 }
 
 void clear_task_variables(){
-    stvars["name"] = "";
-    stvars["parent_name"] = "";
-    stvars["guid"] = "";
-    stvars["parent_guid"] = "";
+    probe_stvars["name"] = "";
+    probe_stvars["parent_name"] = "";
+    probe_stvars["guid"] = "";
+    probe_stvars["parent_guid"] = "";
 
-    stvars["locality"] = "";
+    probe_stvars["locality"] = "";
 
-    stvars["event"] = "";
+    probe_stvars["event"] = "";
 
-    dvars["start"] = 0;
-    dvars["end"] = 0;        
-    dvars["allocations"] = 0;
-    dvars["frees"] = 0;
-    dvars["bytes_allocated"] = 0;
-    dvars["bytes_freed"] = 0; 
+    probe_dvars["start"] = 0;
+    probe_dvars["end"] = 0;        
+    probe_dvars["allocations"] = 0;
+    probe_dvars["frees"] = 0;
+    probe_dvars["bytes_allocated"] = 0;
+    probe_dvars["bytes_freed"] = 0; 
 }
 
 
-void fill_task_variables(std::shared_ptr<apex::task_wrapper> tw, apex_event_type event_type){
-    std::string task_name = tw->task_id->get_name();
-    stvars["name"] = task_name;
-    stvars["parent_name"] = tw->parent->task_id->get_name();
-    stvars["guid"] = std::to_string(tw->guid);
-    stvars["parent_guid"] = std::to_string(tw->parent_guid);
+void fill_task_variables(std::shared_ptr<apex::task_wrapper> tw,
+                         apex_event_type event_type,
+                         std::map<std::string,double>& probe_dvars, 
+                         std::map<std::string,std::string>& probe_stvars)
+{
 
-    stvars["locality"] = hpx::get_locality_name();
+    std::string task_name = tw->task_id->get_name();
+    probe_stvars["name"] = task_name;
+    probe_stvars["parent_name"] = tw->parent->task_id->get_name();
+    probe_stvars["guid"] = std::to_string(tw->guid);
+    probe_stvars["parent_guid"] = std::to_string(tw->parent_guid);
+
+    probe_stvars["locality"] = hpx::get_locality_name();
 
     if(event_type == APEX_STOP_EVENT || event_type == APEX_YIELD_EVENT){
-        if(event_type == APEX_STOP_EVENT) stvars["event"] = "stop";
-        else if(event_type == APEX_YIELD_EVENT) stvars["event"] = "yield";
+        if(event_type == APEX_STOP_EVENT) probe_stvars["event"] = "stop";
+        else if(event_type == APEX_YIELD_EVENT) probe_stvars["event"] = "yield";
         apex::profiler *prof = tw->prof; 
-        dvars["start"] = (double) prof->start_ns;
-        dvars["end"] = (double) prof->end_ns;        
-        dvars["allocations"] = prof->allocations;
-        dvars["frees"] = prof->frees;
-        dvars["bytes_allocated"] = prof->bytes_allocated;
-        dvars["bytes_freed"] = prof->bytes_freed;
+        probe_dvars["start"] = (double) prof->start_ns;
+        probe_dvars["end"] = (double) prof->end_ns;        
+        probe_dvars["allocations"] = prof->allocations;
+        probe_dvars["frees"] = prof->frees;
+        probe_dvars["bytes_allocated"] = prof->bytes_allocated;
+        probe_dvars["bytes_freed"] = prof->bytes_freed;
     }
     else{
-        if(event_type == APEX_START_EVENT) stvars["event"] = "start";
-        else if(event_type == APEX_RESUME_EVENT) stvars["event"] = "resume";
+        if(event_type == APEX_START_EVENT) probe_stvars["event"] = "start";
+        else if(event_type == APEX_RESUME_EVENT) probe_stvars["event"] = "resume";
     }
 }
 
@@ -1147,11 +1134,14 @@ void register_task_probe(std::string probe_name ,std::string predicate, std::str
 
         if(task_filter != task_name && task_filter != "") return 0;
 
-        fill_task_variables(tw, context.event_type);
+        std::map<std::string,double> probe_dvars;
+        std::map<std::string,std::string> probe_stvars;
+
+        fill_task_variables(tw, context.event_type, probe_dvars, probe_stvars);
 
 
-        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end())){
-            parse_actions(actions.begin(), actions.end(), comp);
+        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
+            parse_actions(actions.begin(), actions.end(), comp, probe_dvars, probe_stvars);
         }
 
         clear_task_variables();
@@ -1164,29 +1154,33 @@ void register_task_probe(std::string probe_name ,std::string predicate, std::str
 
 HPX_DEFINE_PLAIN_ACTION(register_task_probe, register_task_probe_action); 
 
-void fill_message_variables(apex::message_event_data event_data, apex_event_type event_type){
-    stvars["locality"] = hpx::get_locality_name();
+void fill_message_variables(apex::message_event_data event_data,
+                            apex_event_type event_type,
+                            std::map<std::string,double>& probe_dvars,
+                            std::map<std::string,std::string>& probe_stvars)
+{
+    probe_stvars["locality"] = hpx::get_locality_name();
 
-    if(event_type == APEX_SEND) stvars["event"] = "send";
-    else if(event_type == APEX_RECV) stvars["event"] = "receive";
+    if(event_type == APEX_SEND) probe_stvars["event"] = "send";
+    else if(event_type == APEX_RECV) probe_stvars["event"] = "receive";
 
-    dvars["tag"] = event_data.tag;
-    dvars["size"] = event_data.size;
-    dvars["source_rank"] = event_data.source_rank;
-    dvars["source_thread"] = event_data.source_thread;
-    dvars["target"] = event_data.target;
+    probe_dvars["tag"] = event_data.tag;
+    probe_dvars["size"] = event_data.size;
+    probe_dvars["source_rank"] = event_data.source_rank;
+    probe_dvars["source_thread"] = event_data.source_thread;
+    probe_dvars["target"] = event_data.target;
 }
 
 void clear_message_variables(apex::message_event_data event_data){
-    stvars["locality"] = "";
+    probe_stvars["locality"] = "";
 
-    stvars["event"] = "";
+    probe_stvars["event"] = "";
 
-    dvars["tag"] = 0;
-    dvars["size"] = 0;
-    dvars["source_rank"] = 0;
-    dvars["source_thread"] = 0;
-    dvars["target"] = 0;
+    probe_dvars["tag"] = 0;
+    probe_dvars["size"] = 0;
+    probe_dvars["source_rank"] = 0;
+    probe_dvars["source_thread"] = 0;
+    probe_dvars["target"] = 0;
 }
 
 void register_message_probe(std::string probe_name, std::string predicate, std::string actions, script_data comp){
@@ -1213,13 +1207,17 @@ void register_message_probe(std::string probe_name, std::string predicate, std::
 
         apex::message_event_data event_data = *reinterpret_cast<apex::message_event_data*>(context.data);
 
-        fill_message_variables(event_data, context.event_type);
+        std::map<std::string,double> probe_dvars;
+        std::map<std::string,std::string> probe_stvars;
 
-        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end())){
-            parse_actions(actions.begin(), actions.end(), comp);
+        fill_message_variables(event_data, context.event_type, probe_dvars, probe_stvars);
+
+
+        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
+            parse_actions(actions.begin(), actions.end(), comp, probe_dvars, probe_stvars);
         }
 
-        clear_message_variables(event_data);
+        //clear_message_variables(event_data);
 
         return APEX_NOERROR;
     });
@@ -1276,8 +1274,9 @@ void parse_script(std::string script){
         if(probe_name == "BEGIN"){
 
             std::cout << "BEGIN " << probe_name << std::endl; 
-
-            parse_actions(probe_script.begin(), probe_script.end(), global_data);
+            std::map<std::string,double> probe_dvars;
+            std::map<std::string,std::string> probe_stvars;
+            parse_actions(probe_script.begin(), probe_script.end(), global_data, probe_dvars, probe_stvars);
         }
 
         else if(probe_name == "END"){
@@ -1288,26 +1287,27 @@ void parse_script(std::string script){
             hpx::register_shutdown_function(
               [end_script]()->void{
      
-                
-                parse_actions(end_script.begin(), end_script.end(), global_data);    
+                std::map<std::string,double> probe_dvars;
+                std::map<std::string,std::string> probe_stvars;
+                parse_actions(end_script.begin(), end_script.end(), global_data, probe_dvars, probe_stvars);    
             });
         }
 
         else if(probe_name.find("counter-create") != -1){
             std::cout << "COUNTER CREATE " << probe_name << std::endl; 
-            register_counter_create_probe(probe_name, probe_predicate, probe_script);
+            register_counter_create_probe(probe_name, probe_predicate, probe_script, global_data);
         }
         else if(probe_name.find("counter-type") != -1){
             std::cout << "COUNTER TYPE " << probe_name << std::endl; 
-            register_counter_type_probe(probe_name, probe_predicate, probe_script);
+            register_counter_type_probe(probe_name, probe_predicate, probe_script, global_data);
         }
         else if(probe_name.find("counter") != -1){
             std::cout << "COUNTER " << probe_name << std::endl; 
-            register_counter_probe(probe_name, probe_predicate, probe_script);
+            register_counter_probe(probe_name, probe_predicate, probe_script, global_data);
         }
         else if(probe_name.find("proc") != -1){
             std::cout << "PROC " << probe_name << std::endl; 
-            register_proc_probe(probe_name, probe_predicate, probe_script);
+            register_proc_probe(probe_name, probe_predicate, probe_script, global_data);
         }
         else if(probe_name.find("task") != -1){
             std::cout << "TASK " << probe_name << std::endl; 
