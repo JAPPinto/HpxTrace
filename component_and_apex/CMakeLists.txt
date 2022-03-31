@@ -7,7 +7,7 @@ project(exemplo_simples CXX)
 # Instruct cmake to find the HPX settings
 find_package(HPX)
 
-
+set (CMAKE_CXX_STANDARD 20)
 
 
 add_hpx_component( comp
@@ -21,6 +21,12 @@ add_hpx_component( script_data
     SOURCES script_data.cpp
     HEADERS script_data.hpp script_data_server/script_data.hpp
 )
+
+add_hpx_component( VarsComp
+    ESSENTIAL
+    SOURCES VarsComp/VarsComp.cpp
+    HEADERS VarsComp/VarsCompClient.hpp VarsComp/VarsCompServer.hpp
+)
  
 add_hpx_executable( apex_action_count
     ESSENTIAL
@@ -31,6 +37,6 @@ add_hpx_executable( apex_action_count
 add_hpx_executable( probes
     ESSENTIAL
     SOURCES probes.cpp
-    DEPENDENCIES script_data_component 
+    DEPENDENCIES script_data_component  VarsComp_component
 )
 

@@ -27,7 +27,7 @@ HPX_PLAIN_ACTION(test, test_action);
 //[fib_func
 std::uint64_t test(std::uint64_t n)
 {
-std::cout << "test " << n << " " <<  n % 2 << std::endl;
+//std::cout << "test " << n << " " <<  n % 2 << std::endl;
 
     //Find all localities
     std::vector<hpx::naming::id_type> localities = hpx::find_all_localities();
@@ -38,11 +38,9 @@ std::cout << "test " << n << " " <<  n % 2 << std::endl;
 
     if(hpx::find_here() == localities[0]){
         API::trigger_probe("abc", {{"a",0}}, {{"s", "ola"}} );
-        std::cout << "loc " <<  0 << std::endl;
     }
     else{
         API::trigger_probe("abc", {{"a",1}}, {{"s", "ola"}} );
-        std::cout << "loc " <<  1 << std::endl;
     } 
 
 
