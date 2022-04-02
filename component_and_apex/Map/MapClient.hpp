@@ -3,10 +3,10 @@
 #include <boost/optional.hpp>
 #include <boost/serialization/optional.hpp>
 
-#include "VarsCompServer.hpp"
+#include "MapServer.hpp"
 
 #include <utility>
-
+/*
 //Clients, like servers, need to inherit from a base class, this time, hpx::components::client_base:
 template <typename T>
 class VarsCompClient : public hpx::components::client_base<VarsCompClient<T>, VarsCompServer<T>>{
@@ -54,4 +54,4 @@ class VarsCompClient : public hpx::components::client_base<VarsCompClient<T>, Va
         }
     
 
-};
+};*/

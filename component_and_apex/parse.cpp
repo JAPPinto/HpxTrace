@@ -25,7 +25,9 @@
 #include "script_data.hpp"
 #include "ScriptData.cpp"
 
-//#include "VarsComp/VarsCompClient.hpp"
+#include "Map/MapClient.hpp"
+#include "Mutexes/MutexesServer.hpp"
+
 #include <boost/optional.hpp>
 
 #include <boost/serialization/optional.hpp>
@@ -85,7 +87,7 @@ bool is_stvar( std::map<std::string,std::string>& probe_stvars, std::string name
 }
 
 bool get_comp_dvar(hpx::naming::id_type id, std::string name, double& value){
-    hpx::util::optional op = VarsCompServer<double>::get_var_action()(id, name);
+    hpx::util::optional op = MapServer<std::string,double>::get_var_action()(id, name);
 
     //std::cout << "get_comp_dvar " << name << std::endl; 
 
@@ -97,20 +99,29 @@ bool get_comp_dvar(hpx::naming::id_type id, std::string name, double& value){
 }
 
 bool get_comp_stvar(hpx::naming::id_type id, std::string name, std::string& value){
-    hpx::util::optional op = VarsCompServer<std::string>::get_var_action()(id, name);
+    hpx::util::optional op = MapServer<std::string,std::string>::get_var_action()(id, name);
     if(!op.has_value()) return false;
     value = op.value();
     return true; 
 }
 
+void comp_lock(hpx::naming::id_type id, std::vector<Variant> key){
+    MutexesServer::lock_action()(id, key);
+}
+
+
+void comp_unlock(hpx::naming::id_type id, std::vector<Variant> key){
+    MutexesServer::unlock_action()(id, key);
+}
+
 void store_comp_dvar(hpx::naming::id_type id, std::string name, double value){
     //std::cout << "store_comp_dvar " << name << value << std::endl; 
 
-    VarsCompServer<double>::store_var_action()(id, name, value);
+    MapServer<std::string,double>::store_var_action()(id, name, value);
 }
 
 void store_comp_stvar(hpx::naming::id_type id, std::string name, std::string value){
-    VarsCompServer<std::string>::store_var_action()(id, name, value);
+    MapServer<std::string,std::string>::store_var_action()(id, name, value);
 }
 
 void print_value(Variant v){
@@ -330,7 +341,14 @@ bool validate_actions(Iterator first, Iterator last) {
     Rule lock =  lit("lock") >> '(' >> keys >> ')';
     Rule unlock =  lit("unlock") >> '(' >> keys >> ')';
 
-    Rule action = assignment | print | aggregation | lock | unlock;
+    Rule global_lock = (lit("global_lock") >> '(' >> keys >> ')');
+        
+    Rule global_unlock = (lit("global_unlock") >> '(' >> keys >> ')');
+
+    Rule locks = lock | unlock | global_lock | global_unlock;
+
+
+    Rule action = assignment | print | aggregation | locks;
 
     Rule actions = action >> ';' >> *(action >> ';');
 
@@ -370,7 +388,7 @@ double fmod(double a, double b){return std::fmod(a,b);}
 
 
 template <typename Iterator>
-bool parse_actions(Iterator first, Iterator last, script_data global_data,
+bool parse_actions(Iterator first, Iterator last,
     std::map<std::string,double>& probe_dvars, std::map<std::string,std::string>& probe_stvars,
     ScriptData data) {
     using qi::double_;
@@ -546,14 +564,20 @@ bool parse_actions(Iterator first, Iterator last, script_data global_data,
         [phx::bind(&aggregate, _1, _2, _3)];
 
     Rule lock = (lit("lock") >> '(' >> keys >> ')')
-        [phx::bind(&Mutexes::lock, &mutexes, _1)];
+        [phx::bind(&comp_lock, phx::ref(data.local_mutexes),_1)];
+        
     Rule unlock = (lit("unlock") >> '(' >> keys >> ')')
-        [phx::bind(&Mutexes::unlock, &mutexes, _1)];
+        [phx::bind(&comp_unlock, phx::ref(data.local_mutexes),_1)];
 
+    Rule global_lock = (lit("global_lock") >> '(' >> keys >> ')')
+        [phx::bind(&comp_lock, phx::ref(data.global_mutexes),_1)];
+        
+    Rule global_unlock = (lit("global_unlock") >> '(' >> keys >> ')')
+        [phx::bind(&comp_unlock, phx::ref(data.global_mutexes),_1)];
 
+    Rule locks = lock | unlock | global_lock | global_unlock;
 
-
-    Rule action = assignment | print | aggregation | lock | unlock;
+    Rule action = assignment | print | aggregation | locks;
 
     Rule actions = action >> ';' >> *(action >> ';');
 
@@ -621,7 +645,11 @@ bool validate_predicate(Iterator first, Iterator last) {
     qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
     RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
-    RuleString var = (char_("a-zA-Z_") >> *char_("a-zA-Z0-9_"));
+    RuleString probe_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
+    RuleString local_var = (char_("&") >> *char_("a-zA-Z0-9_"));
+    RuleString global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
+
+    RuleString var = probe_var | local_var | global_var;
     //Function rules
     Rule string_function;
     Rule double_function;
@@ -717,8 +745,9 @@ bool validate_predicate(Iterator first, Iterator last) {
 
 
 template <typename Iterator>
-bool parse_predicate(Iterator first, Iterator last, script_data global_data,
-    std::map<std::string,double>& probe_dvars, std::map<std::string,std::string>& probe_stvars) {
+bool parse_predicate(Iterator first, Iterator last,
+    std::map<std::string,double>& probe_dvars, std::map<std::string,std::string>& probe_stvars,
+    ScriptData data) {
     using qi::double_;
     using qi::char_;
     using qi::_1;
@@ -740,20 +769,46 @@ bool parse_predicate(Iterator first, Iterator last, script_data global_data,
     qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
     RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
-    RuleString var = (char_("a-zA-Z_") >> *char_("a-zA-Z0-9_"));
+    RuleString probe_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
+    RuleString local_var = (char_("&") >> *char_("a-zA-Z0-9_"));
+    RuleString global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
 
-    RuleString local_string_var = (var[_pass = phx::bind(&is_stvar, phx::ref(probe_stvars), _1)])
+    RuleString var = probe_var | local_var | global_var;
+
+    RuleString probe_stvar = (probe_var[_pass = phx::bind(&is_stvar, phx::ref(probe_stvars), _1)])
                                   [_val = phx::ref(probe_stvars)[_1]];
-    RuleString global_string_var = (var[_pass = phx::bind(&script_data::is_string, &global_data, _1)])
-                                   [_val = phx::bind(&script_data::get_string, &global_data, _1)];
-    RuleString string_var = local_string_var | global_string_var;
+
+    std::string s = "--";
+
+    RuleString local_stvar = 
+        (local_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.local_stvars), _1, phx::ref(s))])
+        [_val = phx::ref(s)];
+
+    RuleString global_stvar = 
+        (global_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.global_stvars), _1, phx::ref(s))])
+        [_val = phx::ref(s)];
 
 
-    RuleDouble local_double_var = (var[_pass = phx::bind(&is_dvar, phx::ref(probe_dvars), _1)])
-                            [_val = phx::ref(probe_dvars)[_1]];
-    RuleDouble global_double_var = (var[_pass = phx::bind(&script_data::is_double, &global_data, _1)])
-                            [_val = phx::bind(&script_data::get_double, &global_data, _1)];
-    RuleDouble double_var = local_double_var | global_double_var;
+    RuleString string_var = probe_stvar | local_stvar | global_stvar;
+
+
+    RuleDouble probe_dvar = (probe_var[_pass = phx::bind(&is_dvar, phx::ref(probe_dvars), _1)])
+                                  [_val = phx::ref(probe_dvars)[_1]];
+
+    double d = -5;
+
+
+    RuleDouble local_dvar = 
+        (local_var[_pass = phx::bind(&get_comp_dvar, phx::ref(data.local_dvars), _1, phx::ref(d))])
+        [_val = phx::ref(d)];
+
+    RuleDouble global_dvar = 
+        (global_var [_pass = phx::bind(&get_comp_dvar, phx::ref(data.global_dvars), _1, phx::ref(d))])
+        [_val = phx::ref(d)];
+
+
+    RuleDouble double_var = probe_dvar | local_dvar | global_dvar;
+
 
     //Function rules
     RuleString string_function;
@@ -896,8 +951,8 @@ void register_user_probe(std::string probe_name, std::string predicate, std::str
             }
 
 
-            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
-                parse_actions(actions.begin(), actions.end(), comp, probe_dvars, probe_stvars, data);
+            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars, data)){
+                parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
             }
 
 
@@ -974,9 +1029,9 @@ void register_counter_create_probe(std::string probe_name ,std::string predicate
 
             fill_counter_variables(*name_ptr, dt.counter_value, probe_dvars, probe_stvars);
 
-            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
+            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars,data)){
                 std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                parse_actions(actions.begin(), actions.end(), comp, probe_dvars, probe_stvars, data);
+                parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
             }
 
         }
@@ -1031,9 +1086,9 @@ void register_counter_probe(std::string probe_name ,std::string predicate, std::
 
                 fill_counter_variables(*name_ptr, dt.counter_value, probe_dvars, probe_stvars);
 
-                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
+                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars,data)){
                     std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                    parse_actions(actions.begin(), actions.end(), comp, probe_dvars, probe_stvars, data);
+                    parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
                 }
             }
 
@@ -1090,9 +1145,9 @@ void register_counter_type_probe(std::string probe_name ,std::string predicate, 
 
                 fill_counter_variables(*dt.counter_name, dt.counter_value, probe_dvars, probe_stvars);
 
-                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
+                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars,data)){
                     std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                    parse_actions(actions.begin(), actions.end(), comp, probe_dvars, probe_stvars, data);
+                    parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
                 }
             }
 
@@ -1131,9 +1186,9 @@ void register_proc_probe(std::string probe_name ,std::string predicate, std::str
             probe_stvars["proc_name"] = *(dt.counter_name);
             probe_dvars["proc_value"] = dt.counter_value;
 
-            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
+            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars, data)){
                 std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
-                parse_actions(actions.begin(), actions.end(), comp, probe_dvars, probe_stvars, data);
+                parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
             }
 
         }
@@ -1214,8 +1269,8 @@ void register_task_probe(std::string probe_name ,std::string predicate, std::str
         fill_task_variables(tw, context.event_type, probe_dvars, probe_stvars);
 
 
-        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
-            parse_actions(actions.begin(), actions.end(), comp, probe_dvars, probe_stvars, data);
+        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars, data)){
+            parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
         }
 
 
@@ -1276,8 +1331,8 @@ void register_message_probe(std::string probe_name, std::string predicate, std::
         fill_message_variables(event_data, context.event_type, probe_dvars, probe_stvars);
 
 
-        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), comp, probe_dvars, probe_stvars)){
-            parse_actions(actions.begin(), actions.end(), comp, probe_dvars, probe_stvars, data);
+        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars, data)){
+            parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
         }
 
 
@@ -1292,11 +1347,10 @@ HPX_DEFINE_PLAIN_ACTION(register_message_probe, register_message_probe_action);
 void execute_begin_probe(std::string actions, ScriptData data){
     std::map<std::string,double> probe_dvars;
     std::map<std::string,std::string> probe_stvars;
-    script_data comp;
 
     
     parse_actions(actions.begin(), actions.end(), 
-        comp, probe_dvars, probe_stvars, data);
+        probe_dvars, probe_stvars, data);
 }
 
 HPX_DEFINE_PLAIN_ACTION(execute_begin_probe, execute_begin_probe_action); 
@@ -1305,17 +1359,16 @@ HPX_DEFINE_PLAIN_ACTION(execute_begin_probe, execute_begin_probe_action);
 void register_end_probe(std::string actions, ScriptData data){
     std::map<std::string,double> probe_dvars;
     std::map<std::string,std::string> probe_stvars;
-    script_data comp;
     std::cout << "END " << actions << std::endl;
 
 
     hpx::register_shutdown_function(
-        [actions, data, comp]()->void{
+        [actions, data]()->void{
             std::map<std::string,double> probe_dvars;
             std::map<std::string,std::string> probe_stvars;
 
             parse_actions(actions.begin(), actions.end(), 
-                comp, probe_dvars, probe_stvars, data
+                probe_dvars, probe_stvars, data
             );   
         }
     );
@@ -1513,15 +1566,22 @@ void init(std::string script){
         hpx::async(psa, loc, script).get();
     }*/
 
-    id_type global_dvars = hpx::new_<VarsCompServer<double>>(hpx::find_here()).get();
-    id_type global_stvars = hpx::new_<VarsCompServer<std::string>>(hpx::find_here()).get();
+    id_type global_dvars = hpx::new_<MapServer<std::string,double>>(hpx::find_here()).get();
+    id_type global_stvars = hpx::new_<MapServer<std::string,std::string>>(hpx::find_here()).get();
+    id_type global_mutexes = hpx::new_<MutexesServer>(hpx::find_here()).get();
+
 
     std::vector<std::pair<id_type,ScriptData>> localities_data;
 
     for(auto loc : localities){
-        id_type local_dvars = hpx::new_<VarsCompServer<double>>(hpx::find_here()).get();
-        id_type local_stvars = hpx::new_<VarsCompServer<std::string>>(hpx::find_here()).get();
+        id_type local_dvars = hpx::new_<MapServer<std::string,double>>(loc).get();
+        id_type local_stvars = hpx::new_<MapServer<std::string,std::string>>(loc).get();
+        id_type local_mutexes = hpx::new_<MutexesServer>(loc).get();
+
         ScriptData sc(loc, global_dvars, local_dvars, global_stvars, local_stvars);
+        sc.local_mutexes = local_mutexes;
+        sc.global_mutexes = global_mutexes;
+
         localities_data.push_back(std::make_pair(loc,sc));
     }
 

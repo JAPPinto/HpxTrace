@@ -1,4 +1,3 @@
-#include "VarsComp/VarsCompClient.hpp"
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 
@@ -16,7 +15,9 @@ public:
 	id_type local_dvars;
 	id_type global_stvars;
 	id_type local_stvars;
-    std::map<std::string,std::string> probe_stvars;
+
+	id_type local_mutexes;
+	id_type global_mutexes;
 
     ScriptData(){}
 
@@ -31,6 +32,7 @@ public:
 	//needed so it can be used as an action argument
  	template<class Archive>
 	void serialize(Archive &a, const unsigned version){
-		a & locality & global_dvars & local_dvars & global_stvars & local_stvars;
+		a & locality & locality_name & global_dvars & local_dvars & global_stvars & local_stvars
+		& local_mutexes & global_mutexes;
    }
 };

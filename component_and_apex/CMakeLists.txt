@@ -22,10 +22,16 @@ add_hpx_component( script_data
     HEADERS script_data.hpp script_data_server/script_data.hpp
 )
 
-add_hpx_component( VarsComp
+add_hpx_component( Map
     ESSENTIAL
-    SOURCES VarsComp/VarsComp.cpp
-    HEADERS VarsComp/VarsCompClient.hpp VarsComp/VarsCompServer.hpp
+    SOURCES Map/Map.cpp
+    HEADERS Map/MapClient.hpp Map/MapServer.hpp
+)
+
+add_hpx_component( Mutexes
+    ESSENTIAL
+    SOURCES Mutexes/Mutexes.cpp
+    HEADERS Mutexes/MutexesServer.hpp
 )
  
 add_hpx_executable( apex_action_count
@@ -37,6 +43,6 @@ add_hpx_executable( apex_action_count
 add_hpx_executable( probes
     ESSENTIAL
     SOURCES probes.cpp
-    DEPENDENCIES script_data_component  VarsComp_component
+    DEPENDENCIES script_data_component  Map_component Mutexes_component
 )
 
