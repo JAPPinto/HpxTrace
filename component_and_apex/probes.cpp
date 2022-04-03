@@ -48,8 +48,14 @@ std::uint64_t test(std::uint64_t n)
         return 0;
     test_action fib;
     std::uint64_t x;
+    if(localities.size() > 1){
         hpx::future<std::uint64_t> n1 = hpx::async(fib, localities[ n % 2], n - 1);
         x = n1.get();
+    }
+    else{
+        hpx::future<std::uint64_t> n1 = hpx::async(fib, localities[0], n - 1);
+        x = n1.get();
+    }
    // for(auto loc : localities){
     //}
 

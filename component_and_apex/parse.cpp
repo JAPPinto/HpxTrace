@@ -42,6 +42,7 @@ namespace API
 {
 
 typedef boost::variant<double, std::string> Variant;
+typedef std::vector<Variant> VariantList;
 
 #define VARIANT_DOUBLE 0
 #define VARIANT_STRING 1
@@ -88,12 +89,7 @@ bool is_stvar( std::map<std::string,std::string>& probe_stvars, std::string name
 
 bool get_comp_dvar(hpx::naming::id_type id, std::string name, double& value){
     hpx::util::optional op = MapServer<std::string,double>::get_var_action()(id, name);
-
-    //std::cout << "get_comp_dvar " << name << std::endl; 
-
     if(!op.has_value()) return false;
-    //std::cout << "get_comp_dvar " << value << std::endl; 
-
     value = op.value();
     return true; 
 }
@@ -105,24 +101,49 @@ bool get_comp_stvar(hpx::naming::id_type id, std::string name, std::string& valu
     return true; 
 }
 
-void comp_lock(hpx::naming::id_type id, std::vector<Variant> key){
-    MutexesServer::lock_action()(id, key);
-}
-
-
-void comp_unlock(hpx::naming::id_type id, std::vector<Variant> key){
-    MutexesServer::unlock_action()(id, key);
-}
-
 void store_comp_dvar(hpx::naming::id_type id, std::string name, double value){
-    //std::cout << "store_comp_dvar " << name << value << std::endl; 
-
     MapServer<std::string,double>::store_var_action()(id, name, value);
 }
 
 void store_comp_stvar(hpx::naming::id_type id, std::string name, std::string value){
     MapServer<std::string,std::string>::store_var_action()(id, name, value);
 }
+
+bool get_dmap(hpx::naming::id_type id, std::string name, VariantList keys, double& value){
+    keys.push_back(name);
+    hpx::util::optional op = MapServer<VariantList,double>::get_var_action()(id, keys);
+    if(!op.has_value()) return false;
+    value = op.value();
+    return true; 
+}
+
+bool get_stmap(hpx::naming::id_type id, std::string name, VariantList keys, std::string& value){
+    keys.push_back(name);
+    hpx::util::optional op = MapServer<VariantList,std::string>::get_var_action()(id, keys);
+    if(!op.has_value()) return false;
+    value = op.value();
+    return true; 
+}
+
+void store_dmap(hpx::naming::id_type id, std::string name, VariantList keys, double value){
+    keys.push_back(name);
+    MapServer<VariantList,double>::store_var_action()(id, keys, value);
+}
+
+void store_stmap(hpx::naming::id_type id, std::string name, VariantList keys, std::string value){
+    keys.push_back(name);
+    MapServer<VariantList,std::string>::store_var_action()(id, keys, value);
+}
+
+void comp_lock(hpx::naming::id_type id, VariantList key){
+    MutexesServer::lock_action()(id, key);
+}
+
+
+void comp_unlock(hpx::naming::id_type id, VariantList key){
+    MutexesServer::unlock_action()(id, key);
+}
+
 
 void print_value(Variant v){
     std::stringstream msg;
@@ -141,7 +162,7 @@ double to_double(std::string s){
     return std::stod(s);
 }
 
-void aggregate(std::string name, std::vector<Variant> keys, double value){
+void aggregate(std::string name, VariantList keys, double value){
     aggvars[name]->aggregate(keys, value);
 }
 
@@ -232,14 +253,21 @@ bool validate_actions(Iterator first, Iterator last) {
     RuleString local_var = (char_("&") >> *char_("a-zA-Z0-9_"));
     RuleString global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
     RuleString var = probe_var | local_var | global_var;
-   // RuleString string_var = (var[_pass = phx::bind(&is_stvar, _1)])[_val = phx::ref(probe_stvars)[_1]];
-    //RuleDouble double_var = (var[_pass = phx::bind(&is_dvar, _1)])[_val = phx::ref(probe_dvars)[_1]];
+
+    Rule value;
+    qi::rule<Iterator, ascii::space_type> keys = value % ',';
+
+
+    Rule local_map = (local_var >> '[' >> keys >> ']');
+    Rule global_map = (global_var >> '[' >> keys >> ']');
+    Rule map = local_map | global_map;
+
     //Function rules
     Rule string_function;
     Rule double_function;
     //Values rules
-    Rule string_value = string | string_function | var;
-    Rule double_value = double_ | double_function | var;
+    Rule string_value = string | string_function | map | var;
+    Rule double_value = double_ | double_function | map | var;
 
     //Expression rules
 
@@ -271,12 +299,12 @@ bool validate_actions(Iterator first, Iterator last) {
         |   ('+' >> factor               )
         ;
 
-    Rule value = arithmetic_expression 
+    value = arithmetic_expression 
           | string_expression;
 
 
-    Rule assignment = (var >> '=' >> arithmetic_expression)
-                | (var >> '=' >> string_expression);  
+    Rule assignment = ((map | var) >> '=' >> arithmetic_expression)
+                | ((map | var) >> '=' >> string_expression);  
 
 
 
@@ -300,7 +328,7 @@ bool validate_actions(Iterator first, Iterator last) {
     Rule function = print;
 
 
-    qi::rule<Iterator, ascii::space_type> keys = value % ',';
+    
      
 
     std::map<std::string, std::string> aggregations;
@@ -377,7 +405,6 @@ bool validate_actions(Iterator first, Iterator last) {
 
 int elapsed_time(){
     std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::seconds> (now - start_time).count();
     return std::chrono::duration_cast<std::chrono::nanoseconds> (now - start_time).count();
 }
 
@@ -464,13 +491,38 @@ bool parse_actions(Iterator first, Iterator last,
     RuleDouble timestamp = lit("timestamp")[_val =  phx::bind(&elapsed_time)];
     RuleString locality = lit("locality")[_val = phx::ref(data.locality_name)];
 
+    qi::rule<Iterator, ascii::space_type, Variant()> value;
+    qi::rule<Iterator, ascii::space_type, VariantList> keys = value % ',';
+
+
+    RuleDouble local_dmap = (local_var >> '[' >> keys >> ']')
+        [_pass = phx::bind(&get_dmap, phx::ref(data.local_dmaps), _1, _2, phx::ref(d)),
+        _val = phx::ref(d)];
+
+    RuleDouble global_dmap = (global_var >> '[' >> keys >> ']')
+        [_pass = phx::bind(&get_dmap, phx::ref(data.global_dmaps), _1, _2, phx::ref(d)),
+        _val = phx::ref(d)];
+    
+    RuleDouble double_map = local_dmap | global_dmap;
+    
+    RuleString local_stmap = (local_var >> '[' >> keys >> ']')
+        [_pass = phx::bind(&get_stmap, phx::ref(data.local_stmaps), _1, _2, phx::ref(s)),
+        _val = phx::ref(s)];
+
+
+    RuleString global_stmap = (global_var >> '[' >> keys >> ']')
+        [_pass = phx::bind(&get_stmap, phx::ref(data.global_stmaps), _1, _2, phx::ref(s)),
+        _val = phx::ref(s)];
+
+    RuleString string_map = local_stmap | global_stmap;
+
 
     //Function rules
     RuleString string_function;
     RuleDouble double_function;
     //Values rules
-    RuleString string_value = string | string_function | locality | string_var;
-    RuleDouble double_value = double_ | double_function | timestamp| double_var;
+    RuleString string_value = string | string_function | locality | string_map | string_var;
+    RuleDouble double_value = double_ | double_function | timestamp| double_map | double_var;
 
     //Expression rules
 
@@ -503,7 +555,6 @@ bool parse_actions(Iterator first, Iterator last,
         ;
 
 
-    qi::rule<Iterator, ascii::space_type, Variant()> value ;
     value = arithmetic_expression[_val = _1] 
           | string_expression[_val = _1];
 
@@ -511,21 +562,37 @@ bool parse_actions(Iterator first, Iterator last,
 
 
 
-    Rule probe_assignment = (probe_var >> '=' >> arithmetic_expression)[phx::ref(probe_dvars)[_1] = _2]
+    Rule probe_var_assignment = (probe_var >> '=' >> arithmetic_expression)[phx::ref(probe_dvars)[_1] = _2]
                     | (probe_var >> '=' >> string_expression)[phx::ref(probe_stvars) [_1] = _2]; 
 
-    Rule local_assignment = (local_var >> '=' >> arithmetic_expression)
+    Rule local_var_assignment = (local_var >> '=' >> arithmetic_expression)
                       [phx::bind(&store_comp_dvar, phx::ref(data.local_dvars), _1, _2)]
                     | (local_var >> '=' >> string_expression)
                       [phx::bind(&store_comp_stvar, phx::ref(data.local_stvars), _1, _2)];
 
-    Rule global_assignment = (global_var >> '=' >> arithmetic_expression)
+    Rule global_var_assignment = (global_var >> '=' >> arithmetic_expression)
                       [phx::bind(&store_comp_dvar, phx::ref(data.global_dvars), _1, _2)]
                     | (global_var >> '=' >> string_expression)
                       [phx::bind(&store_comp_stvar, phx::ref(data.global_stvars), _1, _2)];
 
 
-    Rule assignment = probe_assignment | local_assignment | global_assignment;
+    Rule local_map_assignment = 
+        (local_var >> '[' >> keys >> ']' >> '=' >> arithmetic_expression)
+        [phx::bind(&store_dmap, phx::ref(data.local_dmaps), _1, _2, _3)]
+        | 
+        (local_var >> '[' >> keys >> ']' >> '=' >> string_expression)
+        [phx::bind(&store_stmap, phx::ref(data.local_stmaps), _1, _2, _3)];
+
+    Rule global_map_assignment = 
+        (global_var >> '[' >> keys >> ']' >> '=' >> arithmetic_expression)
+        [phx::bind(&store_dmap, phx::ref(data.global_dmaps), _1, _2, _3)]
+        |
+        (global_var >> '[' >> keys >> ']' >> '=' >> string_expression)
+        [phx::bind(&store_stmap, phx::ref(data.global_stmaps), _1, _2, _3)];
+
+
+    Rule assignment = probe_var_assignment | local_var_assignment | global_var_assignment
+                    | local_map_assignment | global_map_assignment;
 
     Rule print = ("print(" >> value >> ')')[phx::bind(&print_value, _1)];
     
@@ -543,7 +610,6 @@ bool parse_actions(Iterator first, Iterator last,
 
     Rule function = print;
 
-    qi::rule<Iterator, ascii::space_type, std::vector<Variant>> keys = value % ',';
     //if lit is not used, compiler tries to do binary OR
     Rule agg_funcs = lit("sum") | "avg" | "min" | "max" | "quantize";
 
@@ -604,22 +670,6 @@ bool parse_actions(Iterator first, Iterator last,
     return r;
 }
 
-
-bool compare(Variant a, std::string op, Variant b){
-    std::cout << "compare " << a  << op  << b << " "<< "\n";
-
-    if(op == "==") return a == b;
-    if(op == "!=") return a != b;
-    if(op == "<")  return a < b;
-    if(op == "<=") return a <= b;
-    if(op == ">")  return a > b;
-    if(op == ">=") return a >= b;
-
-    std::cout << "ERRO COMPARE " << a  << op  << b << " "<< "\n";
-    return false;
-}
-
-bool and_operator(bool a, bool b){return a && b;}
 
 
 template <typename Iterator>
@@ -858,7 +908,6 @@ bool parse_predicate(Iterator first, Iterator last,
 
     op = +char_("=<>!");
 
-    //comparison = (value >> op >> value)[_val = phx::bind(&compare, _1, _2, _3)];
     comparison = (string_expression >> "==" >> string_expression)[_val = _1 == _2]
                | (string_expression >> "!=" >> string_expression)[_val = _1 != _2]
                | (arithmetic_expression >> "==" >> arithmetic_expression)[_val = _1 == _2]
@@ -987,8 +1036,6 @@ void fill_counter_variables(std::string name, double value,
     hpx::performance_counters::counter_status status = 
                 get_counter_path_elements(name, p);
 
-    std::cout << "AAAA " << p.parentinstancename_ << " " << p.parentinstanceindex_
-     << " " << p.instancename_ <<  " " << p.instanceindex_  << std::endl; 
 
 
     probe_stvars["counter_type"] = '/' + p.objectname_ + '/' + p.countername_;
@@ -1010,7 +1057,6 @@ void register_counter_create_probe(std::string probe_name ,std::string predicate
     std::regex rgx("counter\\-create::([^:]+)::([0-9]+)::");
     std::smatch match;
     std::regex_search(probe_name, match, rgx);
-    std::cout << "REGISTER COUNTER " << match[0] << " " << match[1] << " " << match[2] << std::endl; 
 
     std::string counter_name = match[1];
     int period = std::stoi(match[2]);
@@ -1030,7 +1076,6 @@ void register_counter_create_probe(std::string probe_name ,std::string predicate
             fill_counter_variables(*name_ptr, dt.counter_value, probe_dvars, probe_stvars);
 
             if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars,data)){
-                std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
                 parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
             }
 
@@ -1069,7 +1114,6 @@ void register_counter_probe(std::string probe_name ,std::string predicate, std::
 
         counter_name = match[1];
 
-        std::cout << "REGISTER COUNTER " << match[0] << " " << match[1] << std::endl; 
 
         std::string* name_ptr = new std::string(counter_name);
 
@@ -1087,7 +1131,6 @@ void register_counter_probe(std::string probe_name ,std::string predicate, std::
                 fill_counter_variables(*name_ptr, dt.counter_value, probe_dvars, probe_stvars);
 
                 if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars,data)){
-                    std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
                     parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
                 }
             }
@@ -1117,7 +1160,6 @@ void register_counter_type_probe(std::string probe_name ,std::string predicate, 
 
         counter_type = match[1];
 
-        std::cout << "REGISTER COUNTER " << match[0] << " " << match[1] << std::endl; 
 
         std::string* type_ptr = new std::string(counter_type);
 
@@ -1146,7 +1188,6 @@ void register_counter_type_probe(std::string probe_name ,std::string predicate, 
                 fill_counter_variables(*dt.counter_name, dt.counter_value, probe_dvars, probe_stvars);
 
                 if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars,data)){
-                    std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
                     parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
                 }
             }
@@ -1187,7 +1228,6 @@ void register_proc_probe(std::string probe_name ,std::string predicate, std::str
             probe_dvars["proc_value"] = dt.counter_value;
 
             if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars, data)){
-                std::cout << "APEX_SAMPLE_VALUE" << *(dt.counter_name) << " " << dt.counter_value << std::endl;
                 parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
             }
 
@@ -1237,8 +1277,6 @@ void register_task_probe(std::string probe_name ,std::string predicate, std::str
     std::smatch match;
 
     std::regex_search(probe_name, match, rgx);
-        std::cout << "event:" << std::string(match[1]) << std::endl;
-        std::cout << "task:" << std::string(match[2]) << std::endl;
     std::set<apex_event_type> events;
 
     std::stringstream ss(match[1]);
@@ -1359,7 +1397,6 @@ HPX_DEFINE_PLAIN_ACTION(execute_begin_probe, execute_begin_probe_action);
 void register_end_probe(std::string actions, ScriptData data){
     std::map<std::string,double> probe_dvars;
     std::map<std::string,std::string> probe_stvars;
-    std::cout << "END " << actions << std::endl;
 
 
     hpx::register_shutdown_function(
@@ -1398,7 +1435,6 @@ void process_begin_or_end_probe(std::string probe_name, std::string probe_action
             }
             else{
                 for(auto l : localities_data){
-            std::cout << "AQUI " << probe_name << std::endl;
 
                     register_end_probe_action register_action;
                     register_action(l.first, probe_actions, l.second);
@@ -1482,7 +1518,6 @@ void parse_script(std::string script, script_data global_data, std::vector<std::
             validate_predicate(probe_predicate.begin(), probe_predicate.end());
         validate_actions(probe_script.begin(), probe_script.end());
             
-            std::cout << "AAA " << probe_name << std::endl;
 
 
 
@@ -1532,7 +1567,6 @@ void parse_script(std::string script, script_data global_data, std::vector<std::
         script = match.suffix();
 
         n_probes++;
-            std::cout << "bbb " << script << n_probes << std::endl;
 
     }
 
@@ -1566,8 +1600,11 @@ void init(std::string script){
         hpx::async(psa, loc, script).get();
     }*/
 
+    typedef VariantList VariantList;
     id_type global_dvars = hpx::new_<MapServer<std::string,double>>(hpx::find_here()).get();
     id_type global_stvars = hpx::new_<MapServer<std::string,std::string>>(hpx::find_here()).get();
+    id_type global_dmaps = hpx::new_<MapServer<VariantList,double>>(hpx::find_here()).get();
+    id_type global_stmaps = hpx::new_<MapServer<VariantList,std::string>>(hpx::find_here()).get();
     id_type global_mutexes = hpx::new_<MutexesServer>(hpx::find_here()).get();
 
 
@@ -1576,11 +1613,19 @@ void init(std::string script){
     for(auto loc : localities){
         id_type local_dvars = hpx::new_<MapServer<std::string,double>>(loc).get();
         id_type local_stvars = hpx::new_<MapServer<std::string,std::string>>(loc).get();
+        id_type local_dmaps = hpx::new_<MapServer<VariantList,double>>(loc).get();
+        id_type local_stmaps = hpx::new_<MapServer<VariantList,std::string>>(loc).get();
         id_type local_mutexes = hpx::new_<MutexesServer>(loc).get();
 
         ScriptData sc(loc, global_dvars, local_dvars, global_stvars, local_stvars);
         sc.local_mutexes = local_mutexes;
         sc.global_mutexes = global_mutexes;
+        
+        sc.local_dmaps = local_dmaps;
+        sc.local_stmaps = local_stmaps;
+        sc.global_dmaps = global_dmaps;
+        sc.global_stmaps = global_stmaps;
+
 
         localities_data.push_back(std::make_pair(loc,sc));
     }

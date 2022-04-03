@@ -46,30 +46,40 @@ class MapServer
 
 using std::string;
 
-#define REGISTER_MAP_DECLARATION(a, b)                            \
-	typedef MapServer<a, b> HPX_PP_CAT(MapServer, __LINE__);      \
-    HPX_REGISTER_ACTION_DECLARATION(                              \
-    	HPX_PP_CAT(MapServer, __LINE__)::get_var_action,          \
-    	HPX_PP_CAT(__MapServer_get_var_action_, b))               \
-    HPX_REGISTER_ACTION_DECLARATION(                              \
-    	HPX_PP_CAT(MapServer, __LINE__)::store_var_action,        \
-    	HPX_PP_CAT(__MapServer_store_var_action_, b))             \
+#define REGISTER_MAP_DECLARATION(a, b)                                \
+	typedef MapServer<a, b> HPX_PP_CAT(MapServer, __LINE__);          \
+    HPX_REGISTER_ACTION_DECLARATION(                                  \
+    	HPX_PP_CAT(MapServer, __LINE__)::get_var_action,              \
+    	HPX_PP_CAT(__MapServer_get_var_action_, HPX_PP_CAT(a,b)))     \
+    HPX_REGISTER_ACTION_DECLARATION(                                  \
+    	HPX_PP_CAT(MapServer, __LINE__)::store_var_action,            \
+    	HPX_PP_CAT(__MapServer_store_var_action_, HPX_PP_CAT(a,b)))   \
 
 
-#define REGISTER_MAP(a, b)                                        \
-	typedef MapServer<a,b> HPX_PP_CAT(MapServer, __LINE__);       \
-    HPX_REGISTER_ACTION(                                          \
-        HPX_PP_CAT(MapServer, __LINE__)::get_var_action,          \
-        HPX_PP_CAT(__MapServer_get_value_action_,b))              \
-    HPX_REGISTER_ACTION(                                          \
-        HPX_PP_CAT(MapServer, __LINE__)::store_var_action,        \
-        HPX_PP_CAT(__MapServer_store_value_action_,b))            \
-    typedef ::hpx::components::component<HPX_PP_CAT(              \
-        MapServer, __LINE__)>                                     \
-        HPX_PP_CAT(__MapServer_, b);                              \
-    HPX_REGISTER_COMPONENT(HPX_PP_CAT(__MapServer_, b))           \
+#define REGISTER_MAP(a, b)                                            \
+	typedef MapServer<a,b> HPX_PP_CAT(MapServer, __LINE__);           \
+    HPX_REGISTER_ACTION(                                              \
+        HPX_PP_CAT(MapServer, __LINE__)::get_var_action,              \
+        HPX_PP_CAT(__MapServer_get_value_action_,HPX_PP_CAT(a,b)))    \
+    HPX_REGISTER_ACTION(                                              \
+        HPX_PP_CAT(MapServer, __LINE__)::store_var_action,            \
+        HPX_PP_CAT(__MapServer_store_value_action_,HPX_PP_CAT(a,b)))  \
+    typedef ::hpx::components::component<HPX_PP_CAT(                  \
+        MapServer, __LINE__)>                                         \
+        HPX_PP_CAT(__MapServer_, HPX_PP_CAT(a,b));                    \
+    HPX_REGISTER_COMPONENT(HPX_PP_CAT(__MapServer_, HPX_PP_CAT(a,b))) \
 
 REGISTER_MAP_DECLARATION(string,double);
 REGISTER_MAP(string,double);
 REGISTER_MAP_DECLARATION(string,string);
 REGISTER_MAP(string,string);
+
+
+
+typedef boost::variant<double, std::string> Variant;
+typedef std::vector<Variant> VariantList;
+
+REGISTER_MAP_DECLARATION(VariantList,double);
+REGISTER_MAP(VariantList,double);
+REGISTER_MAP_DECLARATION(VariantList,string);
+REGISTER_MAP(VariantList,string);
