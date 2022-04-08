@@ -18,7 +18,8 @@
 #include <event_listener.hpp>
 #include "variables_map.cpp"
 #include "sample_value_event_data.hpp"
-#include "Aggregation.cpp"
+#include "Aggregations/AggregationsServer.hpp"
+
 #include "Mutexes.cpp"
 
 //#include "task_event.cpp"
@@ -50,11 +51,10 @@ typedef std::vector<Variant> VariantList;
 
 //std::map<std::string,double> probe_dvars; //global variables
 //std::map<std::string, std::string> probe_stvars; //global variables
-std::map<std::string, Aggregation*> aggvars; //aggregation variables
+//std::map<std::string, Aggregation*> aggvars; //aggregation variables
 std::map<std::string,apex_event_type> event_types; 
 std::vector<hpx::util::interval_timer*> interval_timers; //for counter-create
 std::chrono::steady_clock::time_point start_time;
-//script_data global_data;
 Mutexes mutexes;
 
 
@@ -151,6 +151,9 @@ void print_value(Variant v){
     std::cout << msg.str();
 }
 
+
+
+
 std::string to_string(double d){
     std::string str = std::to_string (d);
     str.erase(str.find_last_not_of('0') + 1, std::string::npos);
@@ -162,10 +165,63 @@ double to_double(std::string s){
     return std::stod(s);
 }
 
-void aggregate(std::string name, VariantList keys, double value){
-    aggvars[name]->aggregate(keys, value);
+void aggregate(hpx::naming::id_type id, std::string name, VariantList keys, double value){
+    AggregationsServer::aggregate_action()(id, name, keys, value);
 }
 
+void validate_aggregating_function(
+    std::vector<hpx::naming::id_type> ids,
+    std::string name, 
+    std::string new_func
+    ){
+
+        std::string prev_func;
+        //Melhorar para ser paralelo
+        for(auto id : ids){
+            prev_func = AggregationsServer::new_aggregation_action()(id, new_func, name);
+        }
+
+        if (prev_func != "" && new_func != prev_func){
+            std::string error = "aggregation redefined";
+            error += " current: @" + name + " = " + new_func + "() \n";
+            error += "previous: @" + name + " = " + prev_func + "() \n";
+            throw std::runtime_error(error);
+        }    
+}
+
+void validate_lquantization(
+    std::vector<hpx::naming::id_type> ids,
+    std::string name, 
+    int lower_bound, int upper_bound, int step
+    )
+{
+
+
+    LquantizeResult res;
+    //Melhorar para ser paralelo
+    for(auto id : ids){
+        res = AggregationsServer::new_lquantize_action()(id, name, lower_bound, upper_bound, step);
+    }
+
+    if(res.function != "lquantize"){
+        std::string error = "aggregation redefined";
+        error += " current: @" + name + " = " + "lquantize" + "() \n";
+        error += "previous: @" + name + " = " + res.function + "() \n";
+        throw std::runtime_error(error);
+    }
+    else if(res.lower_bound != lower_bound || res.upper_bound != upper_bound || res.step != step){
+        std::string error = "lquantization parameters redefined\n";
+        error += " current: @" + name + " = lquantize(_, " + std::to_string(lower_bound) +
+            ", " + std::to_string(upper_bound) + ", " + std::to_string(step) + ")\n";
+        error += "previous: @" + name + " = lquantize(_, " + std::to_string(res.lower_bound) +
+            ", " + std::to_string(res.upper_bound) + ", " + std::to_string(res.step) + ")\n";
+        throw std::runtime_error(error);
+    }
+
+
+
+}
+/*
 void validate_aggregating_function(
     std::map<std::string, std::string> &aggregations,
     std::string name, 
@@ -218,12 +274,13 @@ void validate_lquantize_parameters(
             throw std::runtime_error(error);
         }
 }
-
+*/
 
 
 template <typename Iterator>
-bool validate_actions(Iterator first, Iterator last) {
+bool validate_actions(Iterator first, Iterator last, ScriptData data) {
     using qi::double_;
+    using qi::int_;
     using qi::char_;
     using qi::_1;
     using qi::_2;
@@ -308,8 +365,6 @@ bool validate_actions(Iterator first, Iterator last) {
 
 
 
-    Rule print = ("print(" >> arithmetic_expression >> ')')
-               | ("print(" >> string_expression >> ')');
 
     
     Rule str = ("str(" >> arithmetic_expression >> ')');
@@ -325,7 +380,6 @@ bool validate_actions(Iterator first, Iterator last) {
     double_function = dbl | round | ceil | floor;
 
 
-    Rule function = print;
 
 
     
@@ -338,22 +392,22 @@ bool validate_actions(Iterator first, Iterator last) {
 
     Rule aggregation = 
         ('@' >> var >> '[' >> keys >> ']' >> "=" >> "count()")
-        [phx::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "count")]
+        [phx::bind(&validate_aggregating_function, phx::ref(data.aggregations), _1, "count")]
         | 
         ('@' >> var >> '[' >> keys >> ']' >> "=" >> "sum" >> '(' >> arithmetic_expression  >> ')')
-        [phx::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "sum")]
+        [phx::bind(&validate_aggregating_function, phx::ref(data.aggregations), _1, "sum")]
         |
         ('@' >> var >> '[' >> keys >> ']' >> "=" >> "avg" >> '(' >> arithmetic_expression >> ')')
-        [phx::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "avg")]
+        [phx::bind(&validate_aggregating_function, phx::ref(data.aggregations), _1, "avg")]
         | 
         ('@' >> var >> '[' >> keys >> ']' >> "=" >> "min" >> '(' >> arithmetic_expression >> ')')
-        [phx::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "min")]
+        [phx::bind(&validate_aggregating_function, phx::ref(data.aggregations), _1, "min")]
         | 
         ('@' >> var >> '[' >> keys >> ']' >> "=" >> "max" >> '(' >> arithmetic_expression >> ')')
-        [phx::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "max")]
+        [phx::bind(&validate_aggregating_function, phx::ref(data.aggregations), _1, "max")]
         | 
         ('@' >> var >> '[' >> keys >> ']' >> "=" >> "quantize" >> '(' >> arithmetic_expression >> ')')
-        [phx::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "quantize")]
+        [phx::bind(&validate_aggregating_function, phx::ref(data.aggregations), _1, "quantize")]
         | 
         ('@' >> var >> '[' >> keys >> ']' >> "=" >> "lquantize" >> '(' >>
                                                                       arithmetic_expression >> ',' >>
@@ -361,9 +415,17 @@ bool validate_actions(Iterator first, Iterator last) {
                                                                       double_ >> ',' >>
                                                                       double_ >>
                                                                       ')')
-        [phx::bind(&validate_aggregating_function, phx::ref(aggregations), _1, "lquantize"),
-        phx::bind(&validate_lquantize_parameters, phx::ref(lquantizes), _1, _2,_3,_4)
-        ];
+        [phx::bind(&validate_lquantization, phx::ref(data.aggregations), _1,_2,_3,_4)];
+
+    qi::rule<Iterator, ascii::space_type> localities = int_ % ',';
+
+
+    Rule print = ("print(" >> arithmetic_expression >> ')')
+               | ("print(" >> string_expression >> ')')
+               | (lit("print(") >> '@' >> var >> ')')
+               | (lit("global_print(") >> '@' >> var >> ')')
+               | (lit("global_print(") >> '@' >> var >> ',' >> localities >> ')');
+
 
 
     Rule lock =  lit("lock") >> '(' >> keys >> ')';
@@ -420,6 +482,7 @@ bool parse_actions(Iterator first, Iterator last,
     ScriptData data) {
     using qi::double_;
     using qi::char_;
+    using qi::int_;
     using qi::_1;
     using qi::_2;
     using qi::_3;
@@ -594,7 +657,6 @@ bool parse_actions(Iterator first, Iterator last,
     Rule assignment = probe_var_assignment | local_var_assignment | global_var_assignment
                     | local_map_assignment | global_map_assignment;
 
-    Rule print = ("print(" >> value >> ')')[phx::bind(&print_value, _1)];
     
     RuleString str = ("str(" >> arithmetic_expression >> ')')[_val = phx::bind(&to_string, _1)];
     string_function = str;
@@ -608,18 +670,17 @@ bool parse_actions(Iterator first, Iterator last,
 
     double_function = dbl | round | ceil | floor;
 
-    Rule function = print;
 
     //if lit is not used, compiler tries to do binary OR
     Rule agg_funcs = lit("sum") | "avg" | "min" | "max" | "quantize";
 
     Rule aggregation = 
         ('@' >> var >> '[' >> keys >> ']' >> "=" >> "count()")
-        [phx::bind(&aggregate, _1, _2, 0)]
+        [phx::bind(&aggregate, phx::ref(data.local_aggregation), _1, _2, 0)]
         | 
         ('@' >> var >> '[' >> keys >> ']' >> "=" >> 
         agg_funcs >> '(' >> arithmetic_expression >> ')')
-        [phx::bind(&aggregate, _1, _2, _3)]
+        [phx::bind(&aggregate, phx::ref(data.local_aggregation), _1, _2, _3)]
         | 
         ('@' >> var >> '[' >> keys >> ']' >> "=" >> "lquantize" >> '(' >>
                                                                       arithmetic_expression >> ',' >>
@@ -627,7 +688,21 @@ bool parse_actions(Iterator first, Iterator last,
                                                                       double_ >> ',' >>
                                                                       double_ >>
                                                                       ')')
-        [phx::bind(&aggregate, _1, _2, _3)];
+        [phx::bind(&aggregate, phx::ref(data.local_aggregation), _1, _2, _3)];
+
+
+    qi::rule<Iterator, ascii::space_type,std::vector<int>> localities = int_ % ',';
+
+
+    Rule print = ("print(" >> value >> ')')[phx::bind(&print_value, _1)]
+               | (lit("print(") >> '@' >> var >> ')')
+                 [phx::bind(&print_aggregation, phx::ref(data.local_aggregation), _1)]
+               | (lit("global_print(") >> '@' >> var >> ')')
+                 [phx::bind(&global_print_aggregation, phx::ref(data.aggregations), _1)]
+               | (lit("global_print(") >> '@' >> var >> ',' >> localities >> ')')
+                 [phx::bind(&partial_print_aggregation, phx::ref(data.aggregations), _2, _1)];
+
+
 
     Rule lock = (lit("lock") >> '(' >> keys >> ')')
         [phx::bind(&comp_lock, phx::ref(data.local_mutexes),_1)];
@@ -964,9 +1039,7 @@ void trigger_probe(std::string probe_name,
         apex::custom_event(event_types[probe_name], &args);
 }
 
-void register_user_probe(std::string probe_name, std::string predicate, std::string actions, script_data comp,
-    ScriptData data
- ){
+void register_user_probe(std::string probe_name, std::string predicate, std::string actions, ScriptData data){
 
     apex_event_type event_type;
     auto it = event_types.find(probe_name);
@@ -980,7 +1053,7 @@ void register_user_probe(std::string probe_name, std::string predicate, std::str
 
 
     apex::register_policy(event_type,
-      [predicate, actions, comp, data](apex_context const& context)->int{
+      [predicate, actions, data](apex_context const& context)->int{
             arguments& args = *reinterpret_cast<arguments*>(context.data);
 
             std::map<std::string,double> double_arguments = args.first;
@@ -1049,10 +1122,7 @@ void fill_counter_variables(std::string name, double value,
 
 
 
-void register_counter_create_probe(std::string probe_name ,std::string predicate, std::string actions, 
-    script_data comp,
-    ScriptData data
-    ){
+void register_counter_create_probe(std::string probe_name ,std::string predicate, std::string actions, ScriptData data){
 
     std::regex rgx("counter\\-create::([^:]+)::([0-9]+)::");
     std::smatch match;
@@ -1064,7 +1134,7 @@ void register_counter_create_probe(std::string probe_name ,std::string predicate
 
 
 
-    apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, name_ptr, comp, data](apex_context const& context)->int{
+    apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, name_ptr, data](apex_context const& context)->int{
         
         sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
             
@@ -1098,9 +1168,7 @@ void register_counter_create_probe(std::string probe_name ,std::string predicate
 
 }
 
-void register_counter_probe(std::string probe_name ,std::string predicate, std::string actions, script_data comp,
-    ScriptData data
- ){
+void register_counter_probe(std::string probe_name ,std::string predicate, std::string actions, ScriptData data){
 
     std::regex rgx("counter::([^:]+)::");
     std::smatch match;
@@ -1119,7 +1187,7 @@ void register_counter_probe(std::string probe_name ,std::string predicate, std::
 
 
 
-        apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, name_ptr, comp, data](apex_context const& context)->int{
+        apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, name_ptr, data](apex_context const& context)->int{
             
             sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
             
@@ -1144,7 +1212,7 @@ void register_counter_probe(std::string probe_name ,std::string predicate, std::
     }
 }
 
-void register_counter_type_probe(std::string probe_name ,std::string predicate, std::string actions, script_data comp,
+void register_counter_type_probe(std::string probe_name ,std::string predicate, std::string actions,
     ScriptData data
  ){
 
@@ -1165,7 +1233,7 @@ void register_counter_type_probe(std::string probe_name ,std::string predicate, 
 
 
 
-        apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, type_ptr, comp, data](apex_context const& context)->int{
+        apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, type_ptr, data](apex_context const& context)->int{
             
             sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
             
@@ -1198,9 +1266,7 @@ void register_counter_type_probe(std::string probe_name ,std::string predicate, 
     }
 }
 
-void register_proc_probe(std::string probe_name ,std::string predicate, std::string actions, script_data comp,
-    ScriptData data
- ){
+void register_proc_probe(std::string probe_name ,std::string predicate, std::string actions, ScriptData data){
 
     std::regex rgx("proc::([^:]*)::");
     std::smatch match;
@@ -1215,7 +1281,7 @@ void register_proc_probe(std::string probe_name ,std::string predicate, std::str
 
 
 
-    apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, filter, comp, data](apex_context const& context)->int{
+    apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, filter, data](apex_context const& context)->int{
         
         sample_value_event_data& dt = *reinterpret_cast<sample_value_event_data*>(context.data);
         
@@ -1269,9 +1335,7 @@ void fill_task_variables(std::shared_ptr<apex::task_wrapper> tw,
 }
 
 
-void register_task_probe(std::string probe_name ,std::string predicate, std::string actions, script_data comp,
-    ScriptData data
- ){
+void register_task_probe(std::string probe_name ,std::string predicate, std::string actions, ScriptData data){
     std::regex rgx("task\\[([^\\]]*)\\](?:::([^{]*))?");
 
     std::smatch match;
@@ -1294,7 +1358,7 @@ void register_task_probe(std::string probe_name ,std::string predicate, std::str
 
 
 
-    apex::register_policy(events, [predicate, actions, task_filter, comp, data](apex_context const& context)->int{
+    apex::register_policy(events, [predicate, actions, task_filter, data](apex_context const& context)->int{
         
         std::shared_ptr<apex::task_wrapper> tw = *reinterpret_cast<std::shared_ptr<apex::task_wrapper>*>(context.data);
         std::string task_name = tw->task_id->get_name();
@@ -1337,9 +1401,7 @@ void fill_message_variables(apex::message_event_data event_data,
 }
 
 
-void register_message_probe(std::string probe_name, std::string predicate, std::string actions, script_data comp,
-    ScriptData data
- ){
+void register_message_probe(std::string probe_name, std::string predicate, std::string actions, ScriptData data){
     std::regex rgx("message\\[([^\\]]*)\\]");
 
     std::smatch match;
@@ -1358,7 +1420,7 @@ void register_message_probe(std::string probe_name, std::string predicate, std::
 
 
 
-    apex::register_policy(events, [predicate, actions, comp, data](apex_context const& context)->int{
+    apex::register_policy(events, [predicate, actions, data](apex_context const& context)->int{
         
 
         apex::message_event_data event_data = *reinterpret_cast<apex::message_event_data*>(context.data);
@@ -1469,7 +1531,7 @@ void process_begin_or_end_probe(std::string probe_name, std::string probe_action
 
 
 
-void parse_script(std::string script, script_data global_data, std::vector<std::pair<id_type,ScriptData>>& localities_data){
+void parse_script(std::string script, std::vector<std::pair<id_type,ScriptData>>& localities_data){
 
 
 
@@ -1491,14 +1553,14 @@ void parse_script(std::string script, script_data global_data, std::vector<std::
 
 
     std::smatch match;
-
+    std::vector<std::string> matches;
 
     int n_probes = 0;
     std::regex_constants::match_flag_type fl = std::regex_constants::match_continuous;
 
 
     while (
-            std::regex_search(script, match, rgx_begin, fl) 
+           std::regex_search(script, match, rgx_begin, fl) 
         || std::regex_search(script, match, rgx_end, fl) 
         || std::regex_search(script, match, rgx_cc, fl) 
         || std::regex_search(script, match, rgx_c, fl) 
@@ -1509,16 +1571,28 @@ void parse_script(std::string script, script_data global_data, std::vector<std::
         || std::regex_search(script, match, rgx_probe, fl)
     ){
 
-
         std::string probe_name = match[1];
         std::string probe_predicate = match[2];
         std::string probe_script = match[3];
 
         if(probe_predicate != "") 
             validate_predicate(probe_predicate.begin(), probe_predicate.end());
-        validate_actions(probe_script.begin(), probe_script.end());
-            
+        validate_actions(probe_script.begin(), probe_script.end(), localities_data[0].second);
 
+
+        //Remainder of script
+        matches.push_back(probe_name);
+        matches.push_back(probe_predicate);
+        matches.push_back(probe_script);
+        script = match.suffix();
+
+        n_probes++;
+            
+    }
+    for (int i = 0; i < n_probes; i++){
+        std::string probe_name = matches[i*3];
+        std::string probe_predicate = matches[i*3 + 1];
+        std::string probe_script = matches[i*3 + 2];
 
 
         if((probe_name.find("BEGIN") != -1) || (probe_name.find("END") != -1)){
@@ -1528,47 +1602,45 @@ void parse_script(std::string script, script_data global_data, std::vector<std::
 
         else if(probe_name.find("counter-create") != -1){
             std::cout << "COUNTER CREATE " << probe_name << std::endl; 
-            register_counter_create_probe(probe_name, probe_predicate, probe_script, global_data, localities_data[0].second);
+            register_counter_create_probe(probe_name, probe_predicate, probe_script, localities_data[0].second);
         }
         else if(probe_name.find("counter-type") != -1){
             std::cout << "COUNTER TYPE " << probe_name << std::endl; 
-            register_counter_type_probe(probe_name, probe_predicate, probe_script, global_data, localities_data[0].second);
+            register_counter_type_probe(probe_name, probe_predicate, probe_script, localities_data[0].second);
         }
         else if(probe_name.find("counter") != -1){
             std::cout << "COUNTER " << probe_name << std::endl; 
-            register_counter_probe(probe_name, probe_predicate, probe_script, global_data, localities_data[0].second);
+            register_counter_probe(probe_name, probe_predicate, probe_script, localities_data[0].second);
         }
         else if(probe_name.find("proc") != -1){
             std::cout << "PROC " << probe_name << std::endl; 
-            register_proc_probe(probe_name, probe_predicate, probe_script, global_data, localities_data[0].second);
+            register_proc_probe(probe_name, probe_predicate, probe_script, localities_data[0].second);
         }
         else if(probe_name.find("task") != -1){
             std::cout << "TASK " << probe_name << std::endl; 
             for(auto d : localities_data){
                 register_task_probe_action register_action;
-                register_action(d.first, probe_name, probe_predicate, probe_script, global_data, d.second);
+                register_action(d.first, probe_name, probe_predicate, probe_script, d.second);
             }
         }
         else if(probe_name.find("message") != -1){
             std::cout << "MESSAGE " << probe_name << std::endl; 
             for(auto d : localities_data){
                 register_message_probe_action register_action;
-                register_action(d.first, probe_name, probe_predicate, probe_script, global_data, d.second);
+                register_action(d.first, probe_name, probe_predicate, probe_script, d.second);
             }
         }
         else{
             std::cout << "ELSE " << probe_name << std::endl; 
             for(auto d : localities_data){
                 register_user_probe_action register_action;
-                register_action(d.first, probe_name, probe_predicate, probe_script, global_data, d.second);
+                register_action(d.first, probe_name, probe_predicate, probe_script, d.second);
             }
         }
-        //Remainder of script
-        script = match.suffix();
-
-        n_probes++;
 
     }
+
+    
 
     if(n_probes == 0){
         throw std::runtime_error("invalid probes");
@@ -1576,7 +1648,7 @@ void parse_script(std::string script, script_data global_data, std::vector<std::
 
 
     //Print aggregations
-    hpx::register_shutdown_function(
+    /*hpx::register_shutdown_function(
         []()->void{
             for (auto agg : aggvars){
                 //arg.first -> aggregation name
@@ -1586,6 +1658,7 @@ void parse_script(std::string script, script_data global_data, std::vector<std::
             }    
         }
     );
+    */
 }
 
 
@@ -1593,12 +1666,7 @@ void parse_script(std::string script, script_data global_data, std::vector<std::
 void init(std::string script){
     //Find all localities
     std::vector<hpx::naming::id_type> localities = hpx::find_all_localities();
-    //hpx::id_type server_id = hpx::new_<server::script_data>(hpx::find_here());
-    script_data global_data = hpx::new_<script_data>(hpx::find_here());
-    /*parse_script_action psa;
-    for(auto loc : localities){
-        hpx::async(psa, loc, script).get();
-    }*/
+
 
     typedef VariantList VariantList;
     id_type global_dvars = hpx::new_<MapServer<std::string,double>>(hpx::find_here()).get();
@@ -1608,8 +1676,13 @@ void init(std::string script){
     id_type global_mutexes = hpx::new_<MutexesServer>(hpx::find_here()).get();
 
 
-    std::vector<std::pair<id_type,ScriptData>> localities_data;
+    std::vector<id_type> aggregations;
+    for(auto loc : localities){
+        aggregations.push_back(hpx::new_<AggregationsServer>(loc).get());
+    }
 
+    std::vector<std::pair<id_type,ScriptData>> localities_data;
+    int i = 0;
     for(auto loc : localities){
         id_type local_dvars = hpx::new_<MapServer<std::string,double>>(loc).get();
         id_type local_stvars = hpx::new_<MapServer<std::string,std::string>>(loc).get();
@@ -1627,11 +1700,16 @@ void init(std::string script){
         sc.global_stmaps = global_stmaps;
 
 
+        sc.local_aggregation = aggregations[i];
+        i++;
+        sc.aggregations = aggregations;
+
+
         localities_data.push_back(std::make_pair(loc,sc));
     }
 
 
-    parse_script(script, global_data, localities_data);
+    parse_script(script, localities_data);
 }
 
 //destruct interval_timers

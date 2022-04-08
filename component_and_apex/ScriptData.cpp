@@ -24,6 +24,8 @@ public:
 
 	id_type local_mutexes;
 	id_type global_mutexes;
+	id_type local_aggregation;
+	std::vector<id_type> aggregations;
 
     ScriptData(){}
 
@@ -40,6 +42,7 @@ public:
 		a & locality & locality_name 
 		& global_dvars & local_dvars & global_stvars & local_stvars
 		& global_dmaps & local_dmaps & global_stmaps & local_stmaps
-		& local_mutexes & global_mutexes;
+		& local_mutexes & global_mutexes
+		& local_aggregation & aggregations;
    }
 };
