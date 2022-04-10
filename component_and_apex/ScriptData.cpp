@@ -16,10 +16,8 @@ public:
     id_type global_scalar_vars;
     
 
-    id_type local_dmaps;
-    id_type global_dmaps;
-    id_type local_stmaps;
-    id_type global_stmaps;
+    id_type local_map_vars;
+    id_type global_map_vars;
 
     id_type local_mutexes;
     id_type global_mutexes;
@@ -39,7 +37,7 @@ public:
     void serialize(Archive &a, const unsigned version){
         a & locality & locality_name 
         & local_scalar_vars & global_scalar_vars
-        & global_dmaps & local_dmaps & global_stmaps & local_stmaps
+        & local_map_vars & global_map_vars
         & local_mutexes & global_mutexes
         & local_aggregation & aggregations;
    }
