@@ -19,6 +19,8 @@
 #include "variables_map.cpp"
 #include "sample_value_event_data.hpp"
 #include "Aggregations/AggregationsServer.hpp"
+#include "ScalarVars/ScalarVarsServer.hpp"
+
 
 #include "Mutexes.cpp"
 
@@ -49,9 +51,6 @@ typedef std::vector<Variant> VariantList;
 #define VARIANT_STRING 1
 
 
-//std::map<std::string,double> probe_dvars; //global variables
-//std::map<std::string, std::string> probe_stvars; //global variables
-//std::map<std::string, Aggregation*> aggvars; //aggregation variables
 std::map<std::string,apex_event_type> event_types; 
 std::vector<hpx::util::interval_timer*> interval_timers; //for counter-create
 std::chrono::steady_clock::time_point start_time;
@@ -70,7 +69,7 @@ namespace phx = boost::phoenix;
 
 using hpx::naming::id_type;
 
-bool is_dvar(std::map<std::string,double>& probe_dvars, std::string name){
+bool is_probe_dvar(std::map<std::string,double>& probe_dvars, std::string name){
     auto it = probe_dvars.find(name);
     if ( it != probe_dvars.end()){
         return true;
@@ -79,7 +78,7 @@ bool is_dvar(std::map<std::string,double>& probe_dvars, std::string name){
 }
 
 
-bool is_stvar( std::map<std::string,std::string>& probe_stvars, std::string name){
+bool is_probe_stvar( std::map<std::string,std::string>& probe_stvars, std::string name){
     auto it = probe_stvars.find(name);
     if ( it != probe_stvars.end()){
         return true;
@@ -87,26 +86,50 @@ bool is_stvar( std::map<std::string,std::string>& probe_stvars, std::string name
     return false;
 }
 
+bool get_probe_dvar(ScalarVars& vars, std::string name, double& value){
+    hpx::util::optional op = vars.get_double(name);
+    if(!op.has_value()) return false;
+    value = op.value();
+    return true; 
+}
+
+bool get_probe_stvar(ScalarVars& vars, std::string name, std::string& value){
+    hpx::util::optional op = vars.get_string(name);
+    if(!op.has_value()) return false;
+    value = op.value();
+    return true; 
+}
+
+
+bool store_probe_dvar(ScalarVars& vars, std::string name, double value){
+    return vars.store_double(name, value);
+}
+
+bool store_probe_stvar(ScalarVars& vars, std::string name, std::string value){
+    return vars.store_string(name, value);
+}
+
+
 bool get_comp_dvar(hpx::naming::id_type id, std::string name, double& value){
-    hpx::util::optional op = MapServer<std::string,double>::get_var_action()(id, name);
+    hpx::util::optional op = ScalarVarsServer::get_double_action()(id, name);
     if(!op.has_value()) return false;
     value = op.value();
     return true; 
 }
 
 bool get_comp_stvar(hpx::naming::id_type id, std::string name, std::string& value){
-    hpx::util::optional op = MapServer<std::string,std::string>::get_var_action()(id, name);
+    hpx::util::optional op = ScalarVarsServer::get_string_action()(id, name);
     if(!op.has_value()) return false;
     value = op.value();
     return true; 
 }
 
-void store_comp_dvar(hpx::naming::id_type id, std::string name, double value){
-    MapServer<std::string,double>::store_var_action()(id, name, value);
+bool store_comp_dvar(hpx::naming::id_type id, std::string name, double value){
+    return ScalarVarsServer::store_double_action()(id, name, value);
 }
 
-void store_comp_stvar(hpx::naming::id_type id, std::string name, std::string value){
-    MapServer<std::string,std::string>::store_var_action()(id, name, value);
+bool store_comp_stvar(hpx::naming::id_type id, std::string name, std::string value){
+    return ScalarVarsServer::store_string_action()(id, name, value);
 }
 
 bool get_dmap(hpx::naming::id_type id, std::string name, VariantList keys, double& value){
@@ -478,7 +501,7 @@ double fmod(double a, double b){return std::fmod(a,b);}
 
 template <typename Iterator>
 bool parse_actions(Iterator first, Iterator last,
-    std::map<std::string,double>& probe_dvars, std::map<std::string,std::string>& probe_stvars,
+    ScalarVars probe_vars,
     ScriptData data) {
     using qi::double_;
     using qi::char_;
@@ -499,12 +522,13 @@ bool parse_actions(Iterator first, Iterator last,
 
     typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
     typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
+    typedef qi::rule<Iterator, ascii::space_type, bool> RuleBool;
     typedef qi::rule<Iterator, ascii::space_type> Rule;
 
 
     //probe -> probe_dvars and probe_stvars 
-    //local -> data.local_dvars data.local_stvars
-    //global -> data.global_dvars data.global_stvars
+    //local -> data.local_scalar_vars data.local_scalar_vars
+    //global -> data.global_scalar_vars data.global_scalar_vars
 
     //String rules
     qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
@@ -516,35 +540,36 @@ bool parse_actions(Iterator first, Iterator last,
 
     RuleString var = probe_var | local_var | global_var;
 
-    RuleString probe_stvar = (probe_var[_pass = phx::bind(&is_stvar, phx::ref(probe_stvars), _1)])
-                                  [_val = phx::ref(probe_stvars)[_1]];
-
     std::string s = "--";
 
+    RuleString probe_stvar = 
+        (probe_var [_pass = phx::bind(&get_probe_stvar, phx::ref(probe_vars), _1, phx::ref(s))])
+        [_val = phx::ref(s)];
+
     RuleString local_stvar = 
-        (local_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.local_stvars), _1, phx::ref(s))])
+        (local_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.local_scalar_vars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
 
     RuleString global_stvar = 
-        (global_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.global_stvars), _1, phx::ref(s))])
+        (global_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.global_scalar_vars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
 
 
     RuleString string_var = probe_stvar | local_stvar | global_stvar;
 
 
-    RuleDouble probe_dvar = (probe_var[_pass = phx::bind(&is_dvar, phx::ref(probe_dvars), _1)])
-                                  [_val = phx::ref(probe_dvars)[_1]];
-
     double d = -5;
 
+    RuleDouble probe_dvar = 
+        (probe_var [_pass = phx::bind(&get_probe_dvar, phx::ref(probe_vars), _1, phx::ref(d))])
+        [_val = phx::ref(d)];
 
     RuleDouble local_dvar = 
-        (local_var[_pass = phx::bind(&get_comp_dvar, phx::ref(data.local_dvars), _1, phx::ref(d))])
+        (local_var[_pass = phx::bind(&get_comp_dvar, phx::ref(data.local_scalar_vars), _1, phx::ref(d))])
         [_val = phx::ref(d)];
 
     RuleDouble global_dvar = 
-        (global_var [_pass = phx::bind(&get_comp_dvar, phx::ref(data.global_dvars), _1, phx::ref(d))])
+        (global_var [_pass = phx::bind(&get_comp_dvar, phx::ref(data.global_scalar_vars), _1, phx::ref(d))])
         [_val = phx::ref(d)];
 
 
@@ -624,19 +649,24 @@ bool parse_actions(Iterator first, Iterator last,
 
 
 
+    RuleBool probe_var_assignment = (probe_var >> '=' >> arithmetic_expression)
+                      [_val = phx::bind(&store_probe_dvar, phx::ref(probe_vars), _1, _2)]
+                    | (probe_var >> '=' >> string_expression)
+                      [_val = phx::bind(&store_probe_stvar, phx::ref(probe_vars), _1, _2)];
 
-    Rule probe_var_assignment = (probe_var >> '=' >> arithmetic_expression)[phx::ref(probe_dvars)[_1] = _2]
-                    | (probe_var >> '=' >> string_expression)[phx::ref(probe_stvars) [_1] = _2]; 
-
-    Rule local_var_assignment = (local_var >> '=' >> arithmetic_expression)
-                      [phx::bind(&store_comp_dvar, phx::ref(data.local_dvars), _1, _2)]
+    RuleBool local_var_assignment = (local_var >> '=' >> arithmetic_expression)
+                      [_val = phx::bind(&store_comp_dvar, phx::ref(data.local_scalar_vars), _1, _2)]
                     | (local_var >> '=' >> string_expression)
-                      [phx::bind(&store_comp_stvar, phx::ref(data.local_stvars), _1, _2)];
+                      [_val = phx::bind(&store_comp_stvar, phx::ref(data.local_scalar_vars), _1, _2)];
 
-    Rule global_var_assignment = (global_var >> '=' >> arithmetic_expression)
-                      [phx::bind(&store_comp_dvar, phx::ref(data.global_dvars), _1, _2)]
+    RuleBool global_var_assignment = (global_var >> '=' >> arithmetic_expression)
+                      [_val = phx::bind(&store_comp_dvar, phx::ref(data.global_scalar_vars), _1, _2)]
                     | (global_var >> '=' >> string_expression)
-                      [phx::bind(&store_comp_stvar, phx::ref(data.global_stvars), _1, _2)];
+                      [_val = phx::bind(&store_comp_stvar, phx::ref(data.global_scalar_vars), _1, _2)];
+    
+    bool assignment_error = false;
+    Rule scalar_var_assignment = (probe_var_assignment | local_var_assignment | global_var_assignment)
+                                 [_pass = _1, phx::ref(assignment_error) = !_1];
 
 
     Rule local_map_assignment = 
@@ -654,8 +684,7 @@ bool parse_actions(Iterator first, Iterator last,
         [phx::bind(&store_stmap, phx::ref(data.global_stmaps), _1, _2, _3)];
 
 
-    Rule assignment = probe_var_assignment | local_var_assignment | global_var_assignment
-                    | local_map_assignment | global_map_assignment;
+    Rule assignment = scalar_var_assignment | local_map_assignment | global_map_assignment;
 
     
     RuleString str = ("str(" >> arithmetic_expression >> ')')[_val = phx::bind(&to_string, _1)];
@@ -733,9 +762,14 @@ bool parse_actions(Iterator first, Iterator last,
 
 
     if (first != last){// fail if we did not get a full match
-        std::string error = "Variable with wrong type/uninitialized variable in action: \n" ;
-        for (; (*first) != ';' && first != last; first++)
-        {
+        std::string error;
+        if(assignment_error){
+            error = "Variable type and assigned value type don't match: \n" ;
+        }
+        else{
+            error = "Variable with wrong type/uninitialized variable in action: \n" ;
+        }
+        for (; (*first) != ';' && first != last; first++){
             error += *first;
         }
         throw std::runtime_error(error);
@@ -871,7 +905,7 @@ bool validate_predicate(Iterator first, Iterator last) {
 
 template <typename Iterator>
 bool parse_predicate(Iterator first, Iterator last,
-    std::map<std::string,double>& probe_dvars, std::map<std::string,std::string>& probe_stvars,
+    ScalarVars probe_vars,
     ScriptData data) {
     using qi::double_;
     using qi::char_;
@@ -900,35 +934,37 @@ bool parse_predicate(Iterator first, Iterator last,
 
     RuleString var = probe_var | local_var | global_var;
 
-    RuleString probe_stvar = (probe_var[_pass = phx::bind(&is_stvar, phx::ref(probe_stvars), _1)])
-                                  [_val = phx::ref(probe_stvars)[_1]];
 
     std::string s = "--";
 
+    RuleString probe_stvar = 
+        (probe_var [_pass = phx::bind(&get_probe_stvar, phx::ref(probe_vars), _1, phx::ref(s))])
+        [_val = phx::ref(s)];
+
     RuleString local_stvar = 
-        (local_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.local_stvars), _1, phx::ref(s))])
+        (local_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.local_scalar_vars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
 
     RuleString global_stvar = 
-        (global_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.global_stvars), _1, phx::ref(s))])
+        (global_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.global_scalar_vars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
 
 
     RuleString string_var = probe_stvar | local_stvar | global_stvar;
 
 
-    RuleDouble probe_dvar = (probe_var[_pass = phx::bind(&is_dvar, phx::ref(probe_dvars), _1)])
-                                  [_val = phx::ref(probe_dvars)[_1]];
-
     double d = -5;
 
+    RuleDouble probe_dvar = 
+        (probe_var [_pass = phx::bind(&get_probe_dvar, phx::ref(probe_vars), _1, phx::ref(d))])
+        [_val = phx::ref(d)];
 
     RuleDouble local_dvar = 
-        (local_var[_pass = phx::bind(&get_comp_dvar, phx::ref(data.local_dvars), _1, phx::ref(d))])
+        (local_var[_pass = phx::bind(&get_comp_dvar, phx::ref(data.local_scalar_vars), _1, phx::ref(d))])
         [_val = phx::ref(d)];
 
     RuleDouble global_dvar = 
-        (global_var [_pass = phx::bind(&get_comp_dvar, phx::ref(data.global_dvars), _1, phx::ref(d))])
+        (global_var [_pass = phx::bind(&get_comp_dvar, phx::ref(data.global_scalar_vars), _1, phx::ref(d))])
         [_val = phx::ref(d)];
 
 
@@ -1056,25 +1092,24 @@ void register_user_probe(std::string probe_name, std::string predicate, std::str
       [predicate, actions, data](apex_context const& context)->int{
             arguments& args = *reinterpret_cast<arguments*>(context.data);
 
-            std::map<std::string,double> double_arguments = args.first;
-            std::map<std::string,double> probe_dvars;
+            ScalarVars probe_vars;
+
+            std::map<std::string,double>& double_arguments = args.first;
             for (auto const& arg : double_arguments){
                 //arg.first -> variable name
                 //arg.second -> variable value
-                probe_dvars[arg.first] = arg.second; 
+                probe_vars.store_double(arg.first, arg.second);
             }
-
-            std::map<std::string,std::string> string_arguments  = args.second;
-            std::map<std::string,std::string> probe_stvars;
+            std::map<std::string,std::string>& string_arguments = args.second;
             for (auto const& arg : string_arguments){
                 //arg.first -> variable name
                 //arg.second -> variable value
-                probe_stvars[arg.first] = arg.second; 
+                probe_vars.store_string(arg.first, arg.second); 
             }
 
 
-            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars, data)){
-                parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
+            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_vars, data)){
+                parse_actions(actions.begin(), actions.end(), probe_vars, data);
             }
 
 
@@ -1097,12 +1132,10 @@ bool read_counter(hpx::performance_counters::performance_counter counter, std::s
 }
 
 
-void fill_counter_variables(std::string name, double value, 
-        std::map<std::string,double>& probe_dvars, 
-        std::map<std::string,std::string>& probe_stvars){
+void fill_counter_variables(std::string name, double value, ScalarVars& probe_vars){
 
-    probe_stvars["counter_name"] = name;
-    probe_dvars["counter_value"] = value;
+    probe_vars.store_string("counter_name", name);
+    probe_vars.store_double("counter_value", value);
 
     hpx::performance_counters::counter_path_elements p;
 
@@ -1111,12 +1144,12 @@ void fill_counter_variables(std::string name, double value,
 
 
 
-    probe_stvars["counter_type"] = '/' + p.objectname_ + '/' + p.countername_;
-    probe_stvars["counter_parameters"] = p.parameters_;
-    probe_stvars["counter_parent_instance_name"] = p.parentinstancename_;
-    probe_stvars["counter_parent_instance_index"] = std::to_string(p.parentinstanceindex_);
-    probe_stvars["counter_instance_name"] = p.instancename_;
-    probe_stvars["counter_instance_index"] = std::to_string(p.instanceindex_);
+    probe_vars.store_string("counter_type", '/' + p.objectname_ + '/' + p.countername_);
+    probe_vars.store_string("counter_parameters", p.parameters_);
+    probe_vars.store_string("counter_parent_instance_name", p.parentinstancename_);
+    probe_vars.store_string("counter_parent_instance_index", std::to_string(p.parentinstanceindex_));
+    probe_vars.store_string("counter_instance_name", p.instancename_);
+    probe_vars.store_string("counter_instance_index", std::to_string(p.instanceindex_));
 }
 
 
@@ -1140,13 +1173,12 @@ void register_counter_create_probe(std::string probe_name ,std::string predicate
             
         if(*dt.counter_name == *name_ptr){
 
-            std::map<std::string,double> probe_dvars;
-            std::map<std::string,std::string> probe_stvars;
+            ScalarVars probe_vars;
 
-            fill_counter_variables(*name_ptr, dt.counter_value, probe_dvars, probe_stvars);
+            fill_counter_variables(*name_ptr, dt.counter_value, probe_vars);
 
-            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars,data)){
-                parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
+            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_vars,data)){
+                parse_actions(actions.begin(), actions.end(), probe_vars, data);
             }
 
         }
@@ -1193,13 +1225,12 @@ void register_counter_probe(std::string probe_name ,std::string predicate, std::
             
             if(*dt.counter_name == *name_ptr){
 
-                std::map<std::string,double> probe_dvars;
-                std::map<std::string,std::string> probe_stvars;
+                ScalarVars probe_vars;                
 
-                fill_counter_variables(*name_ptr, dt.counter_value, probe_dvars, probe_stvars);
+                fill_counter_variables(*name_ptr, dt.counter_value, probe_vars);
 
-                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars,data)){
-                    parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
+                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_vars,data)){
+                    parse_actions(actions.begin(), actions.end(), probe_vars, data);
                 }
             }
 
@@ -1250,13 +1281,11 @@ void register_counter_type_probe(std::string probe_name ,std::string predicate, 
             //if is counter and belongs to the desired type 
             if(&ec != &hpx::throws && type_sampled.find(*(type_ptr)) != -1){
 
-                std::map<std::string,double> probe_dvars;
-                std::map<std::string,std::string> probe_stvars;
+                ScalarVars probe_vars;
+                fill_counter_variables(*dt.counter_name, dt.counter_value, probe_vars);
 
-                fill_counter_variables(*dt.counter_name, dt.counter_value, probe_dvars, probe_stvars);
-
-                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars,data)){
-                    parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
+                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_vars,data)){
+                    parse_actions(actions.begin(), actions.end(), probe_vars, data);
                 }
             }
 
@@ -1287,14 +1316,13 @@ void register_proc_probe(std::string probe_name ,std::string predicate, std::str
         
         if((*dt.counter_name).find(filter) != -1){
 
-            std::map<std::string,double> probe_dvars;
-            std::map<std::string,std::string> probe_stvars;
+            ScalarVars probe_vars;            
 
-            probe_stvars["proc_name"] = *(dt.counter_name);
-            probe_dvars["proc_value"] = dt.counter_value;
+            probe_vars.store_string("proc_name", *(dt.counter_name));
+            probe_vars.store_double("proc_value", dt.counter_value);
 
-            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars, data)){
-                parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
+            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_vars, data)){
+                parse_actions(actions.begin(), actions.end(), probe_vars, data);
             }
 
         }
@@ -1306,31 +1334,30 @@ void register_proc_probe(std::string probe_name ,std::string predicate, std::str
 
 void fill_task_variables(std::shared_ptr<apex::task_wrapper> tw,
                          apex_event_type event_type,
-                         std::map<std::string,double>& probe_dvars, 
-                         std::map<std::string,std::string>& probe_stvars)
+                         ScalarVars probe_vars)
 {
 
     std::string task_name = tw->task_id->get_name();
-    probe_stvars["name"] = task_name;
-    probe_stvars["parent_name"] = tw->parent->task_id->get_name();
-    probe_stvars["guid"] = std::to_string(tw->guid);
-    probe_stvars["parent_guid"] = std::to_string(tw->parent_guid);
+    probe_vars.store_string("name", task_name);
+    probe_vars.store_string("parent_name", tw->parent->task_id->get_name());
+    probe_vars.store_string("guid", std::to_string(tw->guid));
+    probe_vars.store_string("parent_guid", std::to_string(tw->parent_guid));
 
 
     if(event_type == APEX_STOP_EVENT || event_type == APEX_YIELD_EVENT){
-        if(event_type == APEX_STOP_EVENT) probe_stvars["event"] = "stop";
-        else if(event_type == APEX_YIELD_EVENT) probe_stvars["event"] = "yield";
+        if(event_type == APEX_STOP_EVENT) probe_vars.store_string("event", "stop");
+        else if(event_type == APEX_YIELD_EVENT) probe_vars.store_string("event", "yield");
         apex::profiler *prof = tw->prof; 
-        probe_dvars["start"] = (double) prof->start_ns;
-        probe_dvars["end"] = (double) prof->end_ns;        
-        probe_dvars["allocations"] = prof->allocations;
-        probe_dvars["frees"] = prof->frees;
-        probe_dvars["bytes_allocated"] = prof->bytes_allocated;
-        probe_dvars["bytes_freed"] = prof->bytes_freed;
+        probe_vars.store_double("start", (double) prof->start_ns);
+        probe_vars.store_double("end", (double) prof->end_ns);        
+        probe_vars.store_double("allocations", prof->allocations);
+        probe_vars.store_double("frees", prof->frees);
+        probe_vars.store_double("bytes_allocated", prof->bytes_allocated);
+        probe_vars.store_double("bytes_freed", prof->bytes_freed);
     }
     else{
-        if(event_type == APEX_START_EVENT) probe_stvars["event"] = "start";
-        else if(event_type == APEX_RESUME_EVENT) probe_stvars["event"] = "resume";
+        if(event_type == APEX_START_EVENT) probe_vars.store_string("event", "start");
+        else if(event_type == APEX_RESUME_EVENT) probe_vars.store_string("event", "resume");
     }
 }
 
@@ -1365,14 +1392,13 @@ void register_task_probe(std::string probe_name ,std::string predicate, std::str
 
         if(task_filter != task_name && task_filter != "") return 0;
 
-        std::map<std::string,double> probe_dvars;
-        std::map<std::string,std::string> probe_stvars;
+        ScalarVars probe_vars;        
 
-        fill_task_variables(tw, context.event_type, probe_dvars, probe_stvars);
+        fill_task_variables(tw, context.event_type, probe_vars);
 
 
-        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars, data)){
-            parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
+        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_vars, data)){
+            parse_actions(actions.begin(), actions.end(), probe_vars, data);
         }
 
 
@@ -1386,18 +1412,17 @@ HPX_DEFINE_PLAIN_ACTION(register_task_probe, register_task_probe_action);
 
 void fill_message_variables(apex::message_event_data event_data,
                             apex_event_type event_type,
-                            std::map<std::string,double>& probe_dvars,
-                            std::map<std::string,std::string>& probe_stvars)
+                            ScalarVars probe_vars)
 {
 
-    if(event_type == APEX_SEND) probe_stvars["event"] = "send";
-    else if(event_type == APEX_RECV) probe_stvars["event"] = "receive";
+    if(event_type == APEX_SEND) probe_vars.store_string("event", "send");
+    else if(event_type == APEX_RECV) probe_vars.store_string("event", "receive");
 
-    probe_dvars["tag"] = event_data.tag;
-    probe_dvars["size"] = event_data.size;
-    probe_dvars["source_rank"] = event_data.source_rank;
-    probe_dvars["source_thread"] = event_data.source_thread;
-    probe_dvars["target"] = event_data.target;
+    probe_vars.store_double("tag", event_data.tag);
+    probe_vars.store_double("size", event_data.size);
+    probe_vars.store_double("source_rank", event_data.source_rank);
+    probe_vars.store_double("source_thread", event_data.source_thread);
+    probe_vars.store_double("target", event_data.target);   
 }
 
 
@@ -1425,14 +1450,13 @@ void register_message_probe(std::string probe_name, std::string predicate, std::
 
         apex::message_event_data event_data = *reinterpret_cast<apex::message_event_data*>(context.data);
 
-        std::map<std::string,double> probe_dvars;
-        std::map<std::string,std::string> probe_stvars;
+        ScalarVars probe_vars;        
 
-        fill_message_variables(event_data, context.event_type, probe_dvars, probe_stvars);
+        fill_message_variables(event_data, context.event_type, probe_vars);
 
 
-        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_dvars, probe_stvars, data)){
-            parse_actions(actions.begin(), actions.end(), probe_dvars, probe_stvars, data);
+        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_vars, data)){
+            parse_actions(actions.begin(), actions.end(), probe_vars, data);
         }
 
 
@@ -1445,30 +1469,22 @@ HPX_DEFINE_PLAIN_ACTION(register_message_probe, register_message_probe_action);
  
 
 void execute_begin_probe(std::string actions, ScriptData data){
-    std::map<std::string,double> probe_dvars;
-    std::map<std::string,std::string> probe_stvars;
-
-    
-    parse_actions(actions.begin(), actions.end(), 
-        probe_dvars, probe_stvars, data);
+    ScalarVars probe_vars;    
+    parse_actions(actions.begin(), actions.end(), probe_vars, data);
 }
 
 HPX_DEFINE_PLAIN_ACTION(execute_begin_probe, execute_begin_probe_action); 
 
 
 void register_end_probe(std::string actions, ScriptData data){
-    std::map<std::string,double> probe_dvars;
-    std::map<std::string,std::string> probe_stvars;
+    ScalarVars probe_vars;    
 
 
     hpx::register_shutdown_function(
         [actions, data]()->void{
-            std::map<std::string,double> probe_dvars;
-            std::map<std::string,std::string> probe_stvars;
 
-            parse_actions(actions.begin(), actions.end(), 
-                probe_dvars, probe_stvars, data
-            );   
+            ScalarVars probe_vars;            
+            parse_actions(actions.begin(), actions.end(), probe_vars, data);   
         }
     );
         
@@ -1669,8 +1685,8 @@ void init(std::string script){
 
 
     typedef VariantList VariantList;
-    id_type global_dvars = hpx::new_<MapServer<std::string,double>>(hpx::find_here()).get();
-    id_type global_stvars = hpx::new_<MapServer<std::string,std::string>>(hpx::find_here()).get();
+    id_type global_scalar_vars = hpx::new_<ScalarVarsServer>(hpx::find_here()).get();
+
     id_type global_dmaps = hpx::new_<MapServer<VariantList,double>>(hpx::find_here()).get();
     id_type global_stmaps = hpx::new_<MapServer<VariantList,std::string>>(hpx::find_here()).get();
     id_type global_mutexes = hpx::new_<MutexesServer>(hpx::find_here()).get();
@@ -1684,13 +1700,16 @@ void init(std::string script){
     std::vector<std::pair<id_type,ScriptData>> localities_data;
     int i = 0;
     for(auto loc : localities){
-        id_type local_dvars = hpx::new_<MapServer<std::string,double>>(loc).get();
-        id_type local_stvars = hpx::new_<MapServer<std::string,std::string>>(loc).get();
+        id_type local_scalar_vars = hpx::new_<ScalarVarsServer>(loc).get();
         id_type local_dmaps = hpx::new_<MapServer<VariantList,double>>(loc).get();
         id_type local_stmaps = hpx::new_<MapServer<VariantList,std::string>>(loc).get();
         id_type local_mutexes = hpx::new_<MutexesServer>(loc).get();
 
-        ScriptData sc(loc, global_dvars, local_dvars, global_stvars, local_stvars);
+        ScriptData sc(loc);
+
+        sc.global_scalar_vars = global_scalar_vars;
+        sc.local_scalar_vars = local_scalar_vars;
+
         sc.local_mutexes = local_mutexes;
         sc.global_mutexes = global_mutexes;
         

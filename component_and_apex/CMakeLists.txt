@@ -28,6 +28,12 @@ add_hpx_component( Map
     HEADERS Map/MapClient.hpp Map/MapServer.hpp
 )
 
+add_hpx_component( ScalarVars
+    ESSENTIAL
+    SOURCES ScalarVars/ScalarVarsModule.cpp 
+    HEADERS ScalarVars/ScalarVarsServer.hpp ScalarVars/ScalarVars.hpp
+)
+
 add_hpx_component( Aggregations
     ESSENTIAL
     SOURCES Aggregations/Aggregations.cpp
@@ -49,6 +55,6 @@ add_hpx_executable( apex_action_count
 add_hpx_executable( probes
     ESSENTIAL
     SOURCES probes.cpp
-    DEPENDENCIES script_data_component  Map_component Mutexes_component Aggregations_component
+    DEPENDENCIES script_data_component  Map_component Mutexes_component Aggregations_component ScalarVars_component
 )
 
