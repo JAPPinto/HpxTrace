@@ -1,0 +1,5 @@
+message[send,receive]{
+lock("a");
+print("locality: " + locality + " | event: " + event + " | tag: " + str(tag) + " | size: " + str(size) + " | source_rank: " + str(source_rank) + " | source_thread: " + str(source_thread) + " | target: " + str(target));
+unlock("a");
+}

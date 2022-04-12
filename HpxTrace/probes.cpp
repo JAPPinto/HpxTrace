@@ -4,7 +4,7 @@
 #include <hpx/modules/program_options.hpp>
 #include <unistd.h>
 #include <stdlib.h>  
-#include "parse.cpp"
+#include "HpxTrace.cpp"
 
 
 #include <apex_api.hpp>
@@ -34,13 +34,13 @@ std::uint64_t test(std::uint64_t n)
 
     hpx::naming::id_type const locality_id = localities[localities.size()-1];
     //usleep(1000000);
-    //usleep(100000);
+    usleep(100000);
 
     if(hpx::find_here() == localities[0]){
-        API::trigger_probe("abc", {{"a",0}}, {{"s", "ola"}} );
+        HpxTrace::trigger_probe("abc", {{"a",0}}, {{"s", "ola"}} );
     }
     else{
-        API::trigger_probe("abc", {{"a",1}}, {{"s", "ola"}} );
+        HpxTrace::trigger_probe("abc", {{"a",1}}, {{"s", "ola"}} );
     } 
 
 
@@ -99,7 +99,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
 
 
 
-    API::init(script);
+    HpxTrace::init(script);
 
 
     //API::parse_script(script);
@@ -112,7 +112,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
 
     //API::trigger_probe("xyz", arguments_values);
 
-    API::finalize();
+    HpxTrace::finalize();
 
 
 

@@ -52,11 +52,7 @@ add_hpx_component( Mutexes
     HEADERS Mutexes/MutexesServer.hpp
 )
  
-add_hpx_executable( apex_action_count
-    ESSENTIAL
-    SOURCES apex_action_count.cpp
-    DEPENDENCIES comp_component 
-)
+
 
 add_hpx_executable( probes
     ESSENTIAL

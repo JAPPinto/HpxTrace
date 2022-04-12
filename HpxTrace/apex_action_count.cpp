@@ -67,8 +67,13 @@ int main(int argc, char* argv[]) {
           "number of comp_add_action invoked per component")
         ;
 
+
+    hpx::init_params init_args;
+    init_args.desc_cmdline = desc_commandline;
+
+
     // Initialize and run HPX
-    int status =  hpx::init(desc_commandline, argc, argv);
+    int status =  hpx::init(argc, argv, init_args);
 
 
     std::cout << "Calls to comp_add_action: " << count << std::endl;
