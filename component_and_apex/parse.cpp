@@ -55,8 +55,7 @@ typedef std::vector<Variant> VariantList;
 
 std::map<std::string,apex_event_type> event_types; 
 std::vector<hpx::util::interval_timer*> interval_timers; //for counter-create
-std::chrono::steady_clock::time_point start_time;
-Mutexes mutexes;
+std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
 
 
 
@@ -1090,6 +1089,26 @@ bool parse_predicate(Iterator first, Iterator last,
 }
 
 
+std::vector<int> parse_localities(std::string s, int number_of_localities){
+    std::vector<int> localities;
+    if(s == ""){
+        for (int i = 0; i < number_of_localities; i++){
+            localities.push_back(i);
+        }
+        return localities;
+    }
+    std::stringstream ss(s);
+    while(ss.good()){
+        std::string substr; getline( ss, substr, ',' );
+        int i = std::stoi(substr);
+        if(i >= 0 && i < number_of_localities){ 
+            localities.push_back(i);
+        }
+    }
+    return localities;
+}
+
+
 
 typedef std::pair<std::map<std::string,double>,std::map<std::string,std::string>> arguments;
 
@@ -1325,20 +1344,12 @@ void register_counter_type_probe(std::string probe_name ,std::string predicate, 
     }
 }
 
-void register_proc_probe(std::string probe_name ,std::string predicate, std::string actions, ScriptData data){
-
-    std::regex rgx("proc::([^:]*)::");
-    std::smatch match;
+void register_proc_probe(
+    std::string probe_name,
+    std::string probe_arg,
+    std::string predicate, std::string actions, ScriptData data){
     
-    std::string filter = "";
-
-    if(std::regex_search(probe_name, match, rgx)){
-        filter = std::string(match[1]);
-    }
-
-    std::string counter_name;
-
-
+    std::string filter = probe_arg;
 
     apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, filter, data](apex_context const& context)->int{
         
@@ -1362,10 +1373,12 @@ void register_proc_probe(std::string probe_name ,std::string predicate, std::str
     
 }
 
+HPX_DEFINE_PLAIN_ACTION(register_proc_probe, register_proc_probe_action); 
+
 
 void fill_task_variables(std::shared_ptr<apex::task_wrapper> tw,
                          apex_event_type event_type,
-                         ScalarVars probe_svars)
+                         ScalarVars& probe_svars)
 {
 
     std::string task_name = tw->task_id->get_name();
@@ -1393,28 +1406,33 @@ void fill_task_variables(std::shared_ptr<apex::task_wrapper> tw,
 }
 
 
-void register_task_probe(std::string probe_name ,std::string predicate, std::string actions, ScriptData data){
-    std::regex rgx("task\\[([^\\]]*)\\](?:::([^{]*))?");
+void register_task_probe(
+    std::string probe_name, std::string probe_arg1, std::string probe_arg2,
+    std::string predicate, std::string actions, ScriptData data){
 
-    std::smatch match;
-
-    std::regex_search(probe_name, match, rgx);
     std::set<apex_event_type> events;
 
-    std::stringstream ss(match[1]);
-    while(ss.good()){
-        std::string substr;
-        getline( ss, substr, ',' );
-        if(substr == "start") events.insert(APEX_START_EVENT);
-        else if(substr == "resume") events.insert(APEX_RESUME_EVENT);
-        else if(substr == "stop") events.insert(APEX_STOP_EVENT);
-        else if(substr == "yield") events.insert(APEX_YIELD_EVENT);
+    if(probe_arg1 == ""){
+        events.insert(APEX_START_EVENT);
+        events.insert(APEX_RESUME_EVENT);
+        events.insert(APEX_STOP_EVENT);
+        events.insert(APEX_YIELD_EVENT);
     }
-    
 
-    std::string task_filter = match[2];
+    else{    
+        probe_arg1 = probe_arg1.substr(1, probe_arg1.length()-2);
+        std::stringstream ss(probe_arg1);
+        while(ss.good()){
+            std::string substr;
+            getline( ss, substr, ',' );
+            if(substr == "start") events.insert(APEX_START_EVENT);
+            else if(substr == "resume") events.insert(APEX_RESUME_EVENT);
+            else if(substr == "stop") events.insert(APEX_STOP_EVENT);
+            else if(substr == "yield") events.insert(APEX_YIELD_EVENT);
+        }
+    }
 
-
+    std::string task_filter = probe_arg2;
 
     apex::register_policy(events, [predicate, actions, task_filter, data](apex_context const& context)->int{
         
@@ -1444,7 +1462,7 @@ HPX_DEFINE_PLAIN_ACTION(register_task_probe, register_task_probe_action);
 
 void fill_message_variables(apex::message_event_data event_data,
                             apex_event_type event_type,
-                            ScalarVars probe_svars)
+                            ScalarVars& probe_svars)
 {
 
     if(event_type == APEX_SEND) probe_svars.store_string("event", "send");
@@ -1458,28 +1476,31 @@ void fill_message_variables(apex::message_event_data event_data,
 }
 
 
-void register_message_probe(std::string probe_name, std::string predicate, std::string actions, ScriptData data){
-    std::regex rgx("message\\[([^\\]]*)\\]");
+void register_message_probe(
+    std::string probe_name, std::string probe_arg,
+    std::string predicate, std::string actions, ScriptData data){
 
-    std::smatch match;
-
-    std::regex_search(probe_name, match, rgx);
     std::set<apex_event_type> events;
 
-    std::stringstream ss(match[1]);
-    while(ss.good()){
-        std::string substr;
-        getline( ss, substr, ',' );
-        if(substr == "send") events.insert(APEX_SEND);
-        else if(substr == "receive") events.insert(APEX_RECV);
+    if(probe_arg == ""){
+        events.insert(APEX_SEND);
+        events.insert(APEX_RECV);
     }
-
+    else{    
+        probe_arg = probe_arg.substr(1, probe_arg.length()-2);
+        std::stringstream ss(probe_arg);
+        while(ss.good()){
+            std::string substr;
+            getline( ss, substr, ',' );
+            if(substr == "send") events.insert(APEX_SEND);
+            else if(substr == "receive") events.insert(APEX_RECV);
+        }
+    }
 
 
 
     apex::register_policy(events, [predicate, actions, data](apex_context const& context)->int{
         
-
         apex::message_event_data event_data = *reinterpret_cast<apex::message_event_data*>(context.data);
 
         ScalarVars probe_svars;        
@@ -1487,11 +1508,9 @@ void register_message_probe(std::string probe_name, std::string predicate, std::
 
         fill_message_variables(event_data, context.event_type, probe_svars);
 
-
         if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars, data)){
             parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
         }
-
 
         return APEX_NOERROR;
     });
@@ -1528,7 +1547,7 @@ HPX_DEFINE_PLAIN_ACTION(register_end_probe, register_end_probe_action);
 
 
 void process_begin_or_end_probe(std::string probe_name, std::string probe_actions,
-    std::vector<std::pair<id_type,ScriptData>>& localities_data){
+    std::vector<ScriptData>& localities_data){
 
 
         std::regex rgx("(BEGIN|END)\\[([^\\]]*)\\]");
@@ -1542,14 +1561,14 @@ void process_begin_or_end_probe(std::string probe_name, std::string probe_action
             if(match[1] == "BEGIN"){
                 for(auto l : localities_data){
                     execute_begin_probe_action execute_action;
-                    execute_action(l.first, probe_actions, l.second);
+                    execute_action(l.locality, probe_actions, l);
                 }    
             }
             else{
                 for(auto l : localities_data){
 
                     register_end_probe_action register_action;
-                    register_action(l.first, probe_actions, l.second);
+                    register_action(l.locality, probe_actions, l);
                 }    
             }
             return;
@@ -1567,31 +1586,34 @@ void process_begin_or_end_probe(std::string probe_name, std::string probe_action
             for(int l : localities){
                 execute_begin_probe_action execute_action;
                 auto d = localities_data[l];
-                execute_action(localities_data[l].first, probe_actions, localities_data[l].second);
+                execute_action(localities_data[l].locality, probe_actions, localities_data[l]);
             }
         }
         else{
             for(int l : localities){
                 register_end_probe_action register_action;
                 auto d = localities_data[l];
-                register_action(localities_data[l].first, probe_actions, localities_data[l].second);
+                register_action(localities_data[l].locality, probe_actions, localities_data[l]);
             }
         }
 }
 
 
 
-void parse_script(std::string script, std::vector<std::pair<id_type,ScriptData>>& localities_data){
+void parse_script(std::string script, std::vector<ScriptData>& localities_data){
 
 
 
-    start_time = std::chrono::steady_clock::now();
-    std::vector<hpx::naming::id_type> localities = hpx::find_all_localities();
+    //start_time = std::chrono::steady_clock::now();
 
 
     //(?: -> non-capturing group
-    std::regex rgx_begin("\\s*(BEGIN(?:\\[[^\\]]*\\]))\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
-    std::regex rgx_end("\\s*(END(?:\\[[^\\]]*\\]))\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
+    std::regex rgx_0args("\\s*([a-zA-Z0-9-]+)\\[([^\\]]*)\\]()()\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
+    std::regex rgx_1args("\\s*([a-zA-Z0-9-]+)\\[([^\\]]*)\\]::([^:]+)::()\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
+    std::regex rgx_2args("\\s*([a-zA-Z0-9-]+)\\[([^\\]]*)\\]::([^:]+)::([^:]+)::\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
+
+    std::regex rgx_begin("\\s*(BEGIN)\\[([^\\]]*)\\]()()\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
+    std::regex rgx_end("\\s*(END)\\[([^\\]]*)\\]()()\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
     std::regex rgx_cc("\\s*(counter\\-create::[^:]+::[0-9]+::)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
     std::regex rgx_c("\\s*(counter(?:::[^:]*::)?)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
     std::regex rgx_ct("\\s*(counter\\-type(?:::[^:]*::)?)\\s*(/[^/]*/)?\\s*\\{([^{}]*)\\}");
@@ -1610,81 +1632,125 @@ void parse_script(std::string script, std::vector<std::pair<id_type,ScriptData>>
 
 
     while (
-           std::regex_search(script, match, rgx_begin, fl) 
-        || std::regex_search(script, match, rgx_end, fl) 
+           std::regex_search(script, match, rgx_0args, fl) 
+        || std::regex_search(script, match, rgx_1args, fl) 
+        || std::regex_search(script, match, rgx_2args, fl) 
+        /*|| std::regex_search(script, match, rgx_end, fl) 
         || std::regex_search(script, match, rgx_cc, fl) 
         || std::regex_search(script, match, rgx_c, fl) 
         || std::regex_search(script, match, rgx_ct, fl)
         || std::regex_search(script, match, rgx_proc, fl) 
         || std::regex_search(script, match, rgx_task, fl) 
         || std::regex_search(script, match, rgx_message, fl)     
-        || std::regex_search(script, match, rgx_probe, fl)
+        || std::regex_search(script, match, rgx_probe, fl)*/
     ){
 
         std::string probe_name = match[1];
-        std::string probe_predicate = match[2];
-        std::string probe_script = match[3];
+        std::string probe_localities = match[2];
+        std::string probe_arg1 = match[3];
+        std::string probe_arg2 = match[4];
+        std::string probe_predicate = match[5];
+        std::string probe_actions = match[6];
 
         if(probe_predicate != "") 
             validate_predicate(probe_predicate.begin(), probe_predicate.end());
-        validate_actions(probe_script.begin(), probe_script.end(), localities_data[0].second);
+        validate_actions(probe_actions.begin(), probe_actions.end(), localities_data[0]);
 
 
         //Remainder of script
         matches.push_back(probe_name);
+        matches.push_back(probe_localities);
+        matches.push_back(probe_arg1);
+        matches.push_back(probe_arg2);
         matches.push_back(probe_predicate);
-        matches.push_back(probe_script);
+        matches.push_back(probe_actions);
         script = match.suffix();
 
         n_probes++;
             
     }
+    int j = 6;
     for (int i = 0; i < n_probes; i++){
-        std::string probe_name = matches[i*3];
-        std::string probe_predicate = matches[i*3 + 1];
-        std::string probe_script = matches[i*3 + 2];
+
+        std::string probe_name = matches[i*j];
+        std::string probe_localities = matches[i*j + 1];
+        std::string probe_arg1 = matches[i*j + 2];
+        std::string probe_arg2 = matches[i*j + 3];
+        std::string probe_predicate = matches[i*j + 4];
+        std::string probe_actions = matches[i*j + 5];
+
+        std::vector<int> locs = parse_localities(probe_localities, localities_data.size());
 
 
-        if((probe_name.find("BEGIN") != -1) || (probe_name.find("END") != -1)){
-            std::cout << "BEGINEND " << probe_name << std::endl;
-            process_begin_or_end_probe(probe_name, probe_script, localities_data);
+
+//std::vector<int> parse_localities(std::string s, int number_of_localities){
+
+        if(probe_name == "BEGIN"){
+            std::cout << "BEGIN " << probe_name << std::endl;
+            for(int i : locs){
+                ScriptData& sc = localities_data[i];
+                execute_begin_probe_action execute_action;
+                execute_action(sc.locality, probe_actions, sc);
+            }  
+        }
+        else if(probe_name == "END"){
+            std::cout << "END " << probe_name << std::endl;
+            for(int i : locs){
+                ScriptData& sc = localities_data[i];
+                register_end_probe_action register_action;
+                register_action(sc.locality, probe_actions, sc);
+            }  
         }
 
-        else if(probe_name.find("counter-create") != -1){
-            std::cout << "COUNTER CREATE " << probe_name << std::endl; 
-            register_counter_create_probe(probe_name, probe_predicate, probe_script, localities_data[0].second);
-        }
-        else if(probe_name.find("counter-type") != -1){
-            std::cout << "COUNTER TYPE " << probe_name << std::endl; 
-            register_counter_type_probe(probe_name, probe_predicate, probe_script, localities_data[0].second);
-        }
-        else if(probe_name.find("counter") != -1){
-            std::cout << "COUNTER " << probe_name << std::endl; 
-            register_counter_probe(probe_name, probe_predicate, probe_script, localities_data[0].second);
-        }
         else if(probe_name.find("proc") != -1){
-            std::cout << "PROC " << probe_name << std::endl; 
-            register_proc_probe(probe_name, probe_predicate, probe_script, localities_data[0].second);
+            std::cout << "PROC " << probe_name << std::endl;
+            for(int i : locs){
+                ScriptData& sc = localities_data[i];
+                register_proc_probe_action register_action;
+                register_action(sc.locality, probe_name, probe_arg1, probe_predicate, probe_actions, sc);
+            }  
         }
-        else if(probe_name.find("task") != -1){
-            std::cout << "TASK " << probe_name << std::endl; 
-            for(auto d : localities_data){
-                register_task_probe_action register_action;
-                register_action(d.first, probe_name, probe_predicate, probe_script, d.second);
-            }
-        }
+
         else if(probe_name.find("message") != -1){
             std::cout << "MESSAGE " << probe_name << std::endl; 
             for(auto d : localities_data){
                 register_message_probe_action register_action;
-                register_action(d.first, probe_name, probe_predicate, probe_script, d.second);
+                register_action(d.locality, probe_name, probe_arg1, probe_predicate, probe_actions, d);
             }
         }
+
+
+        //if((probe_name.find("BEGIN") != -1) || (probe_name.find("END") != -1)){
+        //    std::cout << "BEGINEND " << probe_name << std::endl;
+        //    process_begin_or_end_probe(probe_name, probe_actions, localities_data);
+        //}
+
+        else if(probe_name.find("counter-create") != -1){
+            std::cout << "COUNTER CREATE " << probe_name << std::endl; 
+            register_counter_create_probe(probe_name, probe_predicate, probe_actions, localities_data[0]);
+        }
+        else if(probe_name.find("counter-type") != -1){
+            std::cout << "COUNTER TYPE " << probe_name << std::endl; 
+            register_counter_type_probe(probe_name, probe_predicate, probe_actions, localities_data[0]);
+        }
+        else if(probe_name.find("counter") != -1){
+            std::cout << "COUNTER " << probe_name << std::endl; 
+            register_counter_probe(probe_name, probe_predicate, probe_actions, localities_data[0]);
+        }
+
+        else if(probe_name.find("task") != -1){
+            std::cout << "TASK " << probe_name << std::endl; 
+            for(auto d : localities_data){
+                register_task_probe_action register_action;
+                register_action(d.locality, probe_name, probe_arg1, probe_arg2, probe_predicate, probe_actions, d);
+            }
+        }
+
         else{
             std::cout << "ELSE " << probe_name << std::endl; 
             for(auto d : localities_data){
                 register_user_probe_action register_action;
-                register_action(d.first, probe_name, probe_predicate, probe_script, d.second);
+                register_action(d.locality, probe_name, probe_predicate, probe_actions, d);
             }
         }
 
@@ -1728,7 +1794,7 @@ void init(std::string script){
         aggregations.push_back(hpx::new_<AggregationsServer>(loc).get());
     }
 
-    std::vector<std::pair<id_type,ScriptData>> localities_data;
+    std::vector<ScriptData> localities_data;
     int i = 0;
     for(auto loc : localities){
         id_type local_scalar_vars = hpx::new_<ScalarVarsServer>(loc).get();
@@ -1752,7 +1818,7 @@ void init(std::string script){
         sc.aggregations = aggregations;
 
 
-        localities_data.push_back(std::make_pair(loc,sc));
+        localities_data.push_back(sc);
     }
 
 

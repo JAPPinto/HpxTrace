@@ -27,6 +27,7 @@ public:
     ScriptData(){}
 
     ScriptData(id_type loc){
+            locality = loc;
             locality_name = hpx::get_locality_name(loc).get();
         }
 
