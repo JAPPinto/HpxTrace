@@ -2,6 +2,8 @@
 #include <hpx/modules/runtime_components.hpp>
 
 #include "MapServer.hpp"
+#include "SMapServer.hpp"
+
 
 
 // Add factory registration functionality.

@@ -370,3 +370,13 @@ race conditions:
     mpirun -np 2 ./probes --script 'message[0,1]::[send,receive]::{print(tag);}'
 
     counter probe não apanha algumas leitura no inicio e no fim
+
+
+    Emcapsular acesso às variáveis 
+
+
+    & - Variáveis da sonda ou locais?
+
+    arranjar forma de colocar todas as vars
+    falar primeira da função e depois da regra?
+    separar regras? 

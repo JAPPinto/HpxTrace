@@ -22,11 +22,6 @@ add_hpx_component( script_data
     HEADERS script_data.hpp script_data_server/script_data.hpp
 )
 
-add_hpx_component( Map
-    ESSENTIAL
-    SOURCES Map/Map.cpp
-    HEADERS Map/MapClient.hpp Map/MapServer.hpp
-)
 
 add_hpx_component( ScalarVars
     ESSENTIAL

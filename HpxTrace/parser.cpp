@@ -266,20 +266,20 @@ bool validate_actions(Iterator first, Iterator last, ScriptData data) {
     
 
 
-    typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
-    typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
+    typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleSt;
+    typedef qi::rule<Iterator, ascii::space_type, double> RuleN;
     typedef qi::rule<Iterator, ascii::space_type> Rule;
 
 
     //String rules
     qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
-    RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+    RuleSt string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
 
-    RuleString probe_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
-    RuleString local_var = (char_("&") >> *char_("a-zA-Z0-9_"));
-    RuleString global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
-    RuleString var = probe_var | local_var | global_var;
+    RuleSt probe_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
+    RuleSt local_var = (char_("&") >> *char_("a-zA-Z0-9_"));
+    RuleSt global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
+    RuleSt var = probe_var | local_var | global_var;
 
     Rule value;
     qi::rule<Iterator, ascii::space_type> keys = value % ',';
@@ -342,9 +342,9 @@ bool validate_actions(Iterator first, Iterator last, ScriptData data) {
 
     Rule dbl = ("dbl(" >> string_expression >> ')');
 
-    RuleDouble round = ("round(" >> arithmetic_expression >> ')');
-    RuleDouble ceil = ("ceil(" >> arithmetic_expression >> ')');
-    RuleDouble floor = ("floor(" >> arithmetic_expression >> ')');
+    RuleN round = ("round(" >> arithmetic_expression >> ')');
+    RuleN ceil = ("ceil(" >> arithmetic_expression >> ')');
+    RuleN floor = ("floor(" >> arithmetic_expression >> ')');
 
 
     double_function = dbl | round | ceil | floor;
@@ -468,8 +468,8 @@ bool parse_actions(Iterator first, Iterator last,
     
 
 
-    typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
-    typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
+    typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleSt;
+    typedef qi::rule<Iterator, ascii::space_type, double> RuleN;
     typedef qi::rule<Iterator, ascii::space_type, bool> RuleBool;
     typedef qi::rule<Iterator, ascii::space_type> Rule;
 
@@ -480,102 +480,102 @@ bool parse_actions(Iterator first, Iterator last,
 
     //String rules
     qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
-    RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+    RuleSt string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
-    RuleString probe_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
-    RuleString local_var = (char_("&") >> *char_("a-zA-Z0-9_"));
-    RuleString global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
+    RuleSt probe_var = (char_("&") >> *char_("a-zA-Z0-9_"));
+    RuleSt local_var = (*char_("a-zA-Z0-9_"));
+    RuleSt global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
 
-    RuleString var = probe_var | local_var | global_var;
+    RuleSt var = probe_var | local_var | global_var;
 
     std::string s = "--";
 
-    RuleString probe_stvar = 
+    RuleSt probe_stvar = 
         (probe_var [_pass = phx::bind(&get_probe_stvar, phx::ref(probe_svars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
 
-    RuleString local_stvar = 
+    RuleSt local_stvar = 
         (local_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.local_scalar_vars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
 
-    RuleString global_stvar = 
+    RuleSt global_stvar = 
         (global_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.global_scalar_vars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
 
+    RuleSt locality = lit("locality")[_val = phx::ref(data.locality_name)];
 
-    RuleString string_var = probe_stvar | local_stvar | global_stvar;
+    RuleSt string_var = probe_stvar | local_stvar | global_stvar;
 
 
     double d = -5;
 
-    RuleDouble probe_dvar = 
+    RuleN probe_dvar = 
         (probe_var [_pass = phx::bind(&get_probe_dvar, phx::ref(probe_svars), _1, phx::ref(d))])
         [_val = phx::ref(d)];
 
-    RuleDouble local_dvar = 
+    RuleN local_dvar = 
         (local_var[_pass = phx::bind(&get_comp_dvar, phx::ref(data.local_scalar_vars), _1, phx::ref(d))])
         [_val = phx::ref(d)];
 
-    RuleDouble global_dvar = 
+    RuleN global_dvar = 
         (global_var [_pass = phx::bind(&get_comp_dvar, phx::ref(data.global_scalar_vars), _1, phx::ref(d))])
         [_val = phx::ref(d)];
 
+    RuleN timestamp = lit("timestamp")[_val =  phx::bind(&elapsed_time)];
 
-    RuleDouble double_var = probe_dvar | local_dvar | global_dvar;
+    RuleN double_var = probe_dvar | local_dvar | global_dvar;
 
 
-    RuleDouble timestamp = lit("timestamp")[_val =  phx::bind(&elapsed_time)];
-    RuleString locality = lit("locality")[_val = phx::ref(data.locality_name)];
 
     qi::rule<Iterator, ascii::space_type, Variant()> value;
     qi::rule<Iterator, ascii::space_type, VariantList> keys = value % ',';
 
 
-    RuleDouble probe_dmap = (probe_var >> '[' >> keys >> ']')
+    RuleN probe_dmap = (probe_var >> '[' >> keys >> ']')
         [_pass = phx::bind(&get_probe_dmap, phx::ref(probe_mvars), _1, _2, phx::ref(d)),
         _val = phx::ref(d)];
 
-    RuleDouble local_dmap = (local_var >> '[' >> keys >> ']')
+    RuleN local_dmap = (local_var >> '[' >> keys >> ']')
         [_pass = phx::bind(&get_comp_dmap, phx::ref(data.local_map_vars), _1, _2, phx::ref(d)),
         _val = phx::ref(d)];
 
-    RuleDouble global_dmap = (global_var >> '[' >> keys >> ']')
+    RuleN global_dmap = (global_var >> '[' >> keys >> ']')
         [_pass = phx::bind(&get_comp_dmap, phx::ref(data.global_map_vars), _1, _2, phx::ref(d)),
         _val = phx::ref(d)];
     
-    RuleDouble double_map = probe_dmap | local_dmap | global_dmap;
+    RuleN double_map = probe_dmap | local_dmap | global_dmap;
 
 
-    RuleString probe_stmap = (probe_var >> '[' >> keys >> ']')
+    RuleSt probe_stmap = (probe_var >> '[' >> keys >> ']')
         [_pass = phx::bind(&get_probe_stmap, phx::ref(probe_mvars), _1, _2, phx::ref(s)),
         _val = phx::ref(s)];
 
-    RuleString local_stmap = (local_var >> '[' >> keys >> ']')
+    RuleSt local_stmap = (local_var >> '[' >> keys >> ']')
         [_pass = phx::bind(&get_comp_stmap, phx::ref(data.local_map_vars), _1, _2, phx::ref(s)),
         _val = phx::ref(s)];
 
 
-    RuleString global_stmap = (global_var >> '[' >> keys >> ']')
+    RuleSt global_stmap = (global_var >> '[' >> keys >> ']')
         [_pass = phx::bind(&get_comp_stmap, phx::ref(data.global_map_vars), _1, _2, phx::ref(s)),
         _val = phx::ref(s)];
 
-    RuleString string_map = probe_stmap | local_stmap | global_stmap;
+    RuleSt string_map = probe_stmap | local_stmap | global_stmap;
 
 
     //Function rules
-    RuleString string_function;
-    RuleDouble double_function;
+    RuleSt string_function;
+    RuleN double_function;
     //Values rules
-    RuleString string_value = string | string_function | locality | string_map | string_var;
-    RuleDouble double_value = double_ | double_function | timestamp| double_map | double_var;
+    RuleSt string_value = string | string_function | locality | string_map | string_var;
+    RuleN double_value = double_ | double_function | timestamp| double_map | double_var;
 
     //Expression rules
 
-    RuleString string_expression = 
+    RuleSt string_expression = 
         string_value                            [_val = _1]
         >> *('+' >> string_value                [_val = _val + _1]);
 
-    RuleDouble arithmetic_expression, term, factor;
+    RuleN arithmetic_expression, term, factor;
 
     arithmetic_expression =
         term                            [_val = _1]
@@ -655,37 +655,37 @@ bool parse_actions(Iterator first, Iterator last,
     Rule assignment = scalar_var_assignment | map_var_assignment;
 
     
-    RuleString str = ("str(" >> arithmetic_expression >> ')')[_val = phx::bind(&to_string, _1)];
+    RuleSt str = ("str(" >> arithmetic_expression >> ')')[_val = phx::bind(&to_string, _1)];
     string_function = str;
 
-    RuleDouble dbl = ("dbl(" >> string_expression >> ')')[_val = phx::bind(&to_double, _1)];
+    RuleN dbl = ("dbl(" >> string_expression >> ')')[_val = phx::bind(&to_double, _1)];
 
-    RuleDouble round = ("round(" >> arithmetic_expression >> ')')[_val = phx::bind(&round_, _1)];
-    RuleDouble ceil = ("ceil(" >> arithmetic_expression >> ')')[_val = phx::bind(&ceil_, _1)];
-    RuleDouble floor = ("floor(" >> arithmetic_expression >> ')')[_val = phx::bind(&floor_, _1)];
+    RuleN round = ("round(" >> arithmetic_expression >> ')')[_val = phx::bind(&round_, _1)];
+    RuleN ceil = ("ceil(" >> arithmetic_expression >> ')')[_val = phx::bind(&ceil_, _1)];
+    RuleN floor = ("floor(" >> arithmetic_expression >> ')')[_val = phx::bind(&floor_, _1)];
 
 
     double_function = dbl | round | ceil | floor;
 
 
-    //if lit is not used, compiler tries to do binary OR
-    Rule agg_funcs = lit("sum") | "avg" | "min" | "max" | "quantize";
+        //if lit is not used, compiler tries to do binary OR
+        Rule agg_funcs = lit("sum") | "avg" | "min" | "max" | "quantize";
 
-    Rule aggregation = 
-        ('@' >> var >> '[' >> keys >> ']' >> "=" >> "count()")
-        [phx::bind(&aggregate, phx::ref(data.local_aggregation), _1, _2, 0)]
-        | 
-        ('@' >> var >> '[' >> keys >> ']' >> "=" >> 
-        agg_funcs >> '(' >> arithmetic_expression >> ')')
-        [phx::bind(&aggregate, phx::ref(data.local_aggregation), _1, _2, _3)]
-        | 
-        ('@' >> var >> '[' >> keys >> ']' >> "=" >> "lquantize" >> '(' >>
-                                                                      arithmetic_expression >> ',' >>
-                                                                      double_ >> ',' >>
-                                                                      double_ >> ',' >>
-                                                                      double_ >>
-                                                                      ')')
-        [phx::bind(&aggregate, phx::ref(data.local_aggregation), _1, _2, _3)];
+        Rule aggregation = 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "count()")
+            [phx::bind(&aggregate, phx::ref(data.local_aggregation), _1, _2, 0)]
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> 
+            agg_funcs >> '(' >> arithmetic_expression >> ')')
+            [phx::bind(&aggregate, phx::ref(data.local_aggregation), _1, _2, _3)]
+            | 
+            ('@' >> var >> '[' >> keys >> ']' >> "=" >> "lquantize" >> '(' >>
+                                                                          arithmetic_expression >> ',' >>
+                                                                          double_ >> ',' >>
+                                                                          double_ >> ',' >>
+                                                                          double_ >>
+                                                                          ')')
+            [phx::bind(&aggregate, phx::ref(data.local_aggregation), _1, _2, _3)];
 
 
     qi::rule<Iterator, ascii::space_type,std::vector<int>> localities = int_ % ',';
@@ -766,20 +766,20 @@ bool validate_predicate(Iterator first, Iterator last) {
     using ascii::space;
     
 
-    typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
-    typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
+    typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleSt;
+    typedef qi::rule<Iterator, ascii::space_type, double> RuleN;
     typedef qi::rule<Iterator, ascii::space_type> Rule;
 
 
     //String rules
     qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
-    RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+    RuleSt string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
-    RuleString probe_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
-    RuleString local_var = (char_("&") >> *char_("a-zA-Z0-9_"));
-    RuleString global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
+    RuleSt probe_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
+    RuleSt local_var = (char_("&") >> *char_("a-zA-Z0-9_"));
+    RuleSt global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
 
-    RuleString var = probe_var | local_var | global_var;
+    RuleSt var = probe_var | local_var | global_var;
     //Function rules
     Rule string_function;
     Rule double_function;
@@ -890,72 +890,72 @@ bool parse_predicate(Iterator first, Iterator last,
     
 
 
-    typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleString;
-    typedef qi::rule<Iterator, ascii::space_type, double> RuleDouble;
+    typedef qi::rule<Iterator, ascii::space_type, std::string()> RuleSt;
+    typedef qi::rule<Iterator, ascii::space_type, double> RuleN;
     typedef qi::rule<Iterator, ascii::space_type> Rule;
 
 
     //String rules
     qi::rule<Iterator, std::string()> string_content = +(char_ - '"');
-    RuleString string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
+    RuleSt string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
-    RuleString probe_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
-    RuleString local_var = (char_("&") >> *char_("a-zA-Z0-9_"));
-    RuleString global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
+    RuleSt probe_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
+    RuleSt local_var = (char_("&") >> *char_("a-zA-Z0-9_"));
+    RuleSt global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
 
-    RuleString var = probe_var | local_var | global_var;
+    RuleSt var = probe_var | local_var | global_var;
 
 
     std::string s = "--";
 
-    RuleString probe_stvar = 
+    RuleSt probe_stvar = 
         (probe_var [_pass = phx::bind(&get_probe_stvar, phx::ref(probe_svars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
 
-    RuleString local_stvar = 
+    RuleSt local_stvar = 
         (local_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.local_scalar_vars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
 
-    RuleString global_stvar = 
+    RuleSt global_stvar = 
         (global_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.global_scalar_vars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
 
 
-    RuleString string_var = probe_stvar | local_stvar | global_stvar;
+    RuleSt string_var = probe_stvar | local_stvar | global_stvar;
 
 
     double d = -5;
 
-    RuleDouble probe_dvar = 
+    RuleN probe_dvar = 
         (probe_var [_pass = phx::bind(&get_probe_dvar, phx::ref(probe_svars), _1, phx::ref(d))])
         [_val = phx::ref(d)];
 
-    RuleDouble local_dvar = 
+    RuleN local_dvar = 
         (local_var[_pass = phx::bind(&get_comp_dvar, phx::ref(data.local_scalar_vars), _1, phx::ref(d))])
         [_val = phx::ref(d)];
 
-    RuleDouble global_dvar = 
+    RuleN global_dvar = 
         (global_var [_pass = phx::bind(&get_comp_dvar, phx::ref(data.global_scalar_vars), _1, phx::ref(d))])
         [_val = phx::ref(d)];
 
 
-    RuleDouble double_var = probe_dvar | local_dvar | global_dvar;
+    RuleN double_var = probe_dvar | local_dvar | global_dvar;
 
 
     //Function rules
-    RuleString string_function;
-    RuleDouble double_function;
+    RuleSt string_function;
+    RuleN double_function;
     //Values rules
-    RuleString string_value = string | string_function | string_var;
-    RuleDouble double_value = double_ | double_function | double_var;
+    RuleSt string_value = string | string_function | string_var;
+    RuleN double_value = double_ | double_function | double_var;
 
     //Expression rules
 
-    RuleString string_expression = 
+    RuleSt string_expression = 
         string_value                            [_val = _1]
         >> *('+' >> string_value                [_val = _val + _1]);
 
-    RuleDouble arithmetic_expression, term, factor;
+    RuleN arithmetic_expression, term, factor;
 
     arithmetic_expression =
         term                            [_val = _1]
