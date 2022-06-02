@@ -1,7 +1,9 @@
+#ifndef _MAPVARSSERVER_H
+#define _MAPVARSSERVER_H
+
 #include <hpx/hpx.hpp>
 #include <hpx/include/actions.hpp>
 #include <hpx/include/components.hpp>
-
 #include <cstdint>
 #include "MapVars.hpp"
 
@@ -52,3 +54,4 @@ HPX_REGISTER_ACTION_DECLARATION(MapVarsServer::get_double_action, MapVarsServer_
 HPX_REGISTER_ACTION_DECLARATION(MapVarsServer::store_string_action, MapVarsServer_store_string_action);
 HPX_REGISTER_ACTION_DECLARATION(MapVarsServer::get_string_action, MapVarsServer_get_string_action)
 
+#endif

@@ -1,3 +1,5 @@
+#ifndef _MAPVARS_H
+#define _MAPVARS_H
 
 class MapVars{
 
@@ -54,5 +56,4 @@ class MapVars{
         }
 };
 
-
-
+#endif

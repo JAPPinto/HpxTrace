@@ -1,3 +1,6 @@
+#ifndef _SCALARVARSSERVER_H
+#define _SCALARVARSSERVER_H
+
 #include <hpx/hpx.hpp>
 #include <hpx/include/actions.hpp>
 #include <hpx/include/components.hpp>
@@ -48,3 +51,4 @@ HPX_REGISTER_ACTION_DECLARATION(ScalarVarsServer::get_double_action, ScalarVarsS
 HPX_REGISTER_ACTION_DECLARATION(ScalarVarsServer::store_string_action, ScalarVarsServer_store_string_action);
 HPX_REGISTER_ACTION_DECLARATION(ScalarVarsServer::get_string_action, ScalarVarsServer_get_string_action)
 
+#endif

@@ -4,13 +4,11 @@
 #include <hpx/modules/program_options.hpp>
 #include <unistd.h>
 #include <stdlib.h>  
-#include "HpxTrace.cpp"
+#include "HpxTrace.hpp"
 
 
 #include <apex_api.hpp>
 
-
-#include "argument.cpp"
 
 //[fib_action
 // forward declaration of the Fibonacci function
@@ -27,6 +25,9 @@ HPX_PLAIN_ACTION(test, test_action);
 //[fib_func
 std::uint64_t test(std::uint64_t n)
 {
+
+        std::cout << "AAAAAAAAAAAA " << reinterpret_cast<std::uint64_t>(hpx::threads::get_self_id().get()) << std::endl;
+        //apex::resume("FFFFF");
 //std::cout << "test " << n << " " <<  n % 2 << std::endl;
 
     //Find all localities
@@ -49,12 +50,15 @@ std::uint64_t test(std::uint64_t n)
     test_action fib;
     std::uint64_t x;
     if(localities.size() > 1){
-        hpx::future<std::uint64_t> n1 = hpx::async(fib, localities[ n % 2], n - 1);
-        x = n1.get();
+        //hpx::future<std::uint64_t> n1 = hpx::async(fib, localities[ n % 2], n - 1);
+        //x = n1.get();
+        x = fib( localities[ n % 2], n - 1);
     }
     else{
-        hpx::future<std::uint64_t> n1 = hpx::async(fib, localities[0], n - 1);
-        x = n1.get();
+        //hpx::future<std::uint64_t> n1 = hpx::async(fib, localities[0], n - 1);
+        //x = n1.get();
+        x = fib( localities[0], n - 1);
+
     }
    // for(auto loc : localities){
     //}
@@ -72,35 +76,13 @@ using hpx::performance_counters::performance_counter;
 
 std::atomic<std::uint64_t> count(0);
 
-    
+
 
 
 int hpx_main(hpx::program_options::variables_map& vm)
 {
 
-   
-
-    std::vector<std::string> arguments_values = {"1","2","3"};
-
-
-
-    std::string script = vm["script"].as<std::string>();
-
-    if(script == "") script = "abc{x=3; x = x * 10;}";
-
-    std::string file = vm["file"].as<std::string>();
-
-    if(file != ""){
-        std::ifstream t(file);
-        std::stringstream buffer;
-        buffer << t.rdbuf();
-        script = buffer.str();
-    }
-
-
-
-    HpxTrace::init(script);
-
+    HpxTrace::init(vm);
 
     //API::parse_script(script);
 
@@ -123,24 +105,16 @@ int hpx_main(hpx::program_options::variables_map& vm)
 //BEGIN END
 
 
+
+
 int main(int argc, char* argv[]) {
 
 
     // Configure application-specific options
     hpx::program_options::options_description
-       desc_commandline("Usage: " HPX_APPLICATION_STRING " [options]");
+       desc_commandline;
 
-    desc_commandline.add_options()
-        ( "script",
-          hpx::program_options::value<std::string>()->default_value(""),
-          "script for tracing")
-        ;
-
-    desc_commandline.add_options()
-        ( "file",
-          hpx::program_options::value<std::string>()->default_value(""),
-          "file with script for tracing")
-        ;
+    HpxTrace::register_command_line_options(desc_commandline);
 
     // Initialize and run HPX
     //int status =  hpx::init(desc_commandline, argc, argv);

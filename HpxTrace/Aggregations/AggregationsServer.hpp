@@ -1,9 +1,12 @@
+#ifndef _AGGREGATIONSSERVER_H
+#define _AGGREGATIONSSERVER_H
+
 #include <hpx/hpx.hpp>
 #include <hpx/include/actions.hpp>
 #include <hpx/include/components.hpp>
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
-#include "../Aggregation.cpp"
+#include "Aggregation.cpp"
 
 class LquantizeResult{
 
@@ -190,3 +193,5 @@ void partial_print_aggregation(std::vector<hpx::naming::id_type> ids, std::vecto
     global_print_aggregation(filtered_ids, name);
 
 }
+
+#endif

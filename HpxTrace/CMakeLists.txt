@@ -10,19 +10,6 @@ find_package(HPX)
 set (CMAKE_CXX_STANDARD 20)
 
 
-add_hpx_component( comp
-    ESSENTIAL
-    SOURCES comp.cpp
-    HEADERS comp.hpp comp_server/comp.hpp
-)
-
-add_hpx_component( script_data
-    ESSENTIAL
-    SOURCES script_data.cpp
-    HEADERS script_data.hpp script_data_server/script_data.hpp
-)
-
-
 add_hpx_component( ScalarVars
     ESSENTIAL
     SOURCES ScalarVars/ScalarVarsModule.cpp 
@@ -46,12 +33,15 @@ add_hpx_component( Mutexes
     SOURCES Mutexes/Mutexes.cpp
     HEADERS Mutexes/MutexesServer.hpp
 )
- 
 
-
+add_hpx_library( HpxTrace
+    INSTALL_HEADERS
+    SOURCES HpxTrace.cpp
+    HEADERS HpxTrace.hpp
+    DEPENDENCIES Mutexes_component Aggregations_component ScalarVars_component MapVars_component
+)
 add_hpx_executable( probes
     ESSENTIAL
     SOURCES probes.cpp
-    DEPENDENCIES script_data_component  Map_component Mutexes_component Aggregations_component ScalarVars_component MapVars_component
+    DEPENDENCIES HpxTrace
 )
-

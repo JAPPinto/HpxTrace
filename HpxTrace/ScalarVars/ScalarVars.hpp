@@ -1,3 +1,5 @@
+#ifndef _SCALARVARS_H
+#define _SCALARVARS_H
 
 class ScalarVars{
 
@@ -52,5 +54,4 @@ class ScalarVars{
         }
 };
 
-
-
+#endif
