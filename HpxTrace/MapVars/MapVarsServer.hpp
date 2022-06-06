@@ -49,9 +49,9 @@ class MapVarsServer : public hpx::components::locking_hook< hpx::components::com
 
 
 //Declare the necessary component action boilerplate code
-HPX_REGISTER_ACTION_DECLARATION(MapVarsServer::store_double_action, MapVarsServer_store_double_action);
-HPX_REGISTER_ACTION_DECLARATION(MapVarsServer::get_double_action, MapVarsServer_get_double_action)
-HPX_REGISTER_ACTION_DECLARATION(MapVarsServer::store_string_action, MapVarsServer_store_string_action);
-HPX_REGISTER_ACTION_DECLARATION(MapVarsServer::get_string_action, MapVarsServer_get_string_action)
+HPX_REGISTER_ACTION_DECLARATION(MapVarsServer::store_double_action, HpxTrace_MapVarsServer_store_double_action);
+HPX_REGISTER_ACTION_DECLARATION(MapVarsServer::get_double_action, HpxTrace_MapVarsServer_get_double_action)
+HPX_REGISTER_ACTION_DECLARATION(MapVarsServer::store_string_action, HpxTrace_MapVarsServer_store_string_action);
+HPX_REGISTER_ACTION_DECLARATION(MapVarsServer::get_string_action, HpxTrace_MapVarsServer_get_string_action)
 
 #endif

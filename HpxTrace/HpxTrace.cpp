@@ -46,8 +46,7 @@ typedef std::vector<Variant> VariantList;
 
 std::map<std::string,apex_event_type> event_types; 
 std::vector<hpx::util::interval_timer*> interval_timers; //for counter-create
-
-
+std::vector<apex_policy_handle*> apex_policies;
 
 std::vector<int> parse_localities(std::string s, int number_of_localities){
     std::vector<int> localities;
@@ -82,6 +81,10 @@ void trigger_probe(std::string probe_name,
         arguments args;
         args.first = double_arguments;
         args.second = string_arguments;
+
+        std::uint64_t thread_id = reinterpret_cast<std::uint64_t>(hpx::threads::get_self_id().get());
+        args.second["&thread"] = std::to_string(thread_id);
+
         apex::custom_event(event_types[probe_name], &args);
 }
 
@@ -98,8 +101,10 @@ void register_user_probe(std::string probe_name, std::string predicate, std::str
     }
 
 
-    apex::register_policy(event_type,
-      [predicate, actions, data](apex_context const& context)->int{
+    apex_policies.push_back(apex::register_policy(
+        event_type,
+        [predicate, actions, data](apex_context const& context)->int{
+        
             arguments& args = *reinterpret_cast<arguments*>(context.data);
 
             ScalarVars probe_svars;
@@ -122,12 +127,9 @@ void register_user_probe(std::string probe_name, std::string predicate, std::str
                 parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
             }
 
-
-            
-
-
         return APEX_NOERROR;
-        });
+        }
+    ));
 }
 
 HPX_DEFINE_PLAIN_ACTION(register_user_probe, register_user_probe_action); 
@@ -183,25 +185,26 @@ void register_counter_create_probe(
             std::cout << "register_counter_create_probe " << counter_name << period << std::endl;
 
 
-    apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, counter_name, data](apex_context const& context)->int{
+    apex_policies.push_back(apex::register_policy(
+        APEX_SAMPLE_VALUE,
+        [predicate, actions, counter_name, data](apex_context const& context)->int{
         
-        apex::sample_value_event_data& dt = *reinterpret_cast<apex::sample_value_event_data*>(context.data);
-            
-        if(*dt.counter_name == counter_name){
+            apex::sample_value_event_data& dt = *reinterpret_cast<apex::sample_value_event_data*>(context.data);
+                
+            if(*dt.counter_name == counter_name){
 
-            ScalarVars probe_svars;
-            MapVars probe_mvars;
-            fill_counter_variables(*dt.counter_name, dt.counter_value, probe_svars);
+                ScalarVars probe_svars;
+                MapVars probe_mvars;
+                fill_counter_variables(*dt.counter_name, dt.counter_value, probe_svars);
 
-            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars,data)){
-                parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars,data)){
+                    parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+                }
+
             }
-
+            return APEX_NOERROR;
         }
-
-
-        return APEX_NOERROR;
-    });
+    ));
 
     hpx::performance_counters::performance_counter counter(counter_name);
 
@@ -222,24 +225,27 @@ void register_counter_probe(
     std::string probe_arg,
     std::string predicate, std::string actions, ScriptData data){
 
-    apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, probe_arg, data](apex_context const& context)->int{
+    apex_policies.push_back(apex::register_policy(
+        APEX_SAMPLE_VALUE, 
+        [predicate, actions, probe_arg, data](apex_context const& context)->int{
         
-        apex::sample_value_event_data& dt = *reinterpret_cast<apex::sample_value_event_data*>(context.data);
-        
-        if(probe_arg == "" || *dt.counter_name == probe_arg){
+            apex::sample_value_event_data& dt = *reinterpret_cast<apex::sample_value_event_data*>(context.data);
+            
+            if(probe_arg == "" || *dt.counter_name == probe_arg){
 
-            ScalarVars probe_svars;
-            MapVars probe_mvars;         
+                ScalarVars probe_svars;
+                MapVars probe_mvars;         
 
-            bool is_counter = fill_counter_variables(*dt.counter_name, dt.counter_value, probe_svars);
-            if(!is_counter) return APEX_NOERROR;
+                bool is_counter = fill_counter_variables(*dt.counter_name, dt.counter_value, probe_svars);
+                if(!is_counter) return APEX_NOERROR;
 
-            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars,data)){
-                parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars,data)){
+                    parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+                }
             }
+            return APEX_NOERROR;
         }
-        return APEX_NOERROR;
-    });
+    ));
 }
 
 
@@ -249,34 +255,37 @@ void register_counter_type_probe(std::string probe_arg ,std::string predicate, s
  ){
 
 
-    apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, probe_arg, data](apex_context const& context)->int{
-        
-        apex::sample_value_event_data& dt = *reinterpret_cast<apex::sample_value_event_data*>(context.data);
-        
-        hpx::performance_counters::counter_path_elements p;
+    apex_policies.push_back(apex::register_policy(
+        APEX_SAMPLE_VALUE,
+        [predicate, actions, probe_arg, data](apex_context const& context)->int{
+            
+            apex::sample_value_event_data& dt = *reinterpret_cast<apex::sample_value_event_data*>(context.data);
+            
+            hpx::performance_counters::counter_path_elements p;
 
 
-        hpx::error_code ec; 
-        hpx::performance_counters::counter_status status = 
-                    get_counter_path_elements(*dt.counter_name, p, ec);
+            hpx::error_code ec; 
+            hpx::performance_counters::counter_status status = 
+                        get_counter_path_elements(*dt.counter_name, p, ec);
 
 
-        std::string type_sampled = '/' + p.objectname_ + '/' + p.countername_;
+            std::string type_sampled = '/' + p.objectname_ + '/' + p.countername_;
 
-        //if is counter and belongs to the desired type 
-        if(&ec != &hpx::throws && type_sampled.find(probe_arg) != -1){
+            //if is counter and belongs to the desired type 
+            if(&ec != &hpx::throws && type_sampled.find(probe_arg) != -1){
 
-            ScalarVars probe_svars;
-            MapVars probe_mvars;
-            fill_counter_variables(*dt.counter_name, dt.counter_value, probe_svars);
+                ScalarVars probe_svars;
+                MapVars probe_mvars;
+                fill_counter_variables(*dt.counter_name, dt.counter_value, probe_svars);
 
-            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars,data)){
-                parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars,data)){
+                    parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+                }
             }
-        }
 
-        return APEX_NOERROR;
-    });
+            return APEX_NOERROR;
+        }
+    ));
     
 }
 
@@ -284,25 +293,28 @@ void register_proc_probe(std::string probe_arg, std::string predicate, std::stri
     
     std::string filter = probe_arg;
 
-    apex::register_policy(APEX_SAMPLE_VALUE, [predicate, actions, filter, data](apex_context const& context)->int{
+    apex_policies.push_back(apex::register_policy(
+        APEX_SAMPLE_VALUE, 
+        [predicate, actions, filter, data](apex_context const& context)->int{
         
-        apex::sample_value_event_data& dt = *reinterpret_cast<apex::sample_value_event_data*>(context.data);
-        
-        if((*dt.counter_name).find(filter) != -1){
+            apex::sample_value_event_data& dt = *reinterpret_cast<apex::sample_value_event_data*>(context.data);
+            
+            if((*dt.counter_name).find(filter) != -1){
 
-            ScalarVars probe_svars;            
-            MapVars probe_mvars;
+                ScalarVars probe_svars;            
+                MapVars probe_mvars;
 
-            probe_svars.store_string("&proc_name", *(dt.counter_name));
-            probe_svars.store_double("&proc_value", dt.counter_value);
+                probe_svars.store_string("&proc_name", *(dt.counter_name));
+                probe_svars.store_double("&proc_value", dt.counter_value);
 
-            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars, data)){
-                parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+                if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars, data)){
+                    parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+                }
+
             }
-
+            return APEX_NOERROR;
         }
-        return APEX_NOERROR;
-    });
+    ));
     
 }
 
@@ -319,6 +331,7 @@ void fill_task_variables(std::shared_ptr<apex::task_wrapper> tw,
     probe_svars.store_string("&parent_name", tw->parent->task_id->get_name());
     probe_svars.store_string("&guid", std::to_string(tw->guid));
     probe_svars.store_string("&parent_guid", std::to_string(tw->parent_guid));
+    probe_svars.store_string("&thread", std::to_string(tw->thread_id));
 
 
     if(event_type == APEX_STOP_EVENT || event_type == APEX_YIELD_EVENT){
@@ -332,8 +345,6 @@ void fill_task_variables(std::shared_ptr<apex::task_wrapper> tw,
         probe_svars.store_double("&bytes_allocated", prof->bytes_allocated);
         probe_svars.store_double("&bytes_freed", prof->bytes_freed);
         
-        probe_svars.store_double("&thread", tw->thread_id);
-
     }
     else{
         if(event_type == APEX_START_EVENT) probe_svars.store_string("&event", "start");
@@ -369,44 +380,35 @@ void register_task_probe(std::string probe_arg1, std::string probe_arg2,
 
     std::string task_filter = probe_arg2;
 
-    apex::register_policy(events, [predicate, actions, task_filter, data](apex_context const& context)->int{
+    std::set<apex_policy_handle*> pls = apex::register_policy(
+        events,
+        [predicate, actions, task_filter, data](apex_context const& context)->int{
         
-        std::shared_ptr<apex::task_wrapper> tw = *reinterpret_cast<std::shared_ptr<apex::task_wrapper>*>(context.data);
-        std::string task_name = tw->task_id->get_name();
-
-        if(context.event_type == APEX_RESUME_EVENT)  std::cout << "RESUME " << task_name << tw->thread_id << std::endl;  
-
-
-        if(task_name.find("_double_action") != std::string::npos || 
-            task_name.find("_string_action") != std::string::npos)
-            return 0;
-
-        //std::cout << "TASK " << task_name << tw->thread_id << std::endl; 
+            std::shared_ptr<apex::task_wrapper> tw = 
+                *reinterpret_cast<std::shared_ptr<apex::task_wrapper>*>(context.data);
+            std::string task_name = tw->task_id->get_name();
 
 
-        //std::cout << task_filter << "..." << task_name << std::endl;
-        if(task_filter != task_name && task_filter != "") return 0;
-        //std::cout << "passou1" << task_name << std::endl;
+            if(task_name.starts_with("HpxTrace")) return 0;
 
-        ScalarVars probe_svars;        
-        MapVars probe_mvars;
+            if(task_filter != task_name && task_filter != "") return 0;
 
-        fill_task_variables(tw, context.event_type, probe_svars);
+            ScalarVars probe_svars;        
+            MapVars probe_mvars;
 
-        //std::cout << "TASK " << task_name << probe_svars.get_string("&event").value() << std::endl; 
+            fill_task_variables(tw, context.event_type, probe_svars);
 
+            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars, data)){
+                parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+            }
 
-        //std::cout << "passou2" << task_name << std::endl;
-
-        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars, data)){
-            parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+            return APEX_NOERROR;
         }
+    );
 
-        //std::cout << "passou3" << task_name << std::endl;
-
-
-        return APEX_NOERROR;
-    });
+    for(auto pl : pls){
+        apex_policies.push_back(pl);
+    }
     
 }
 
@@ -452,22 +454,27 @@ void register_message_probe(
 
 
 
-    apex::register_policy(events, [predicate, actions, data](apex_context const& context)->int{
-        
-        apex::message_event_data event_data = *reinterpret_cast<apex::message_event_data*>(context.data);
+    std::set<apex_policy_handle*> pls = apex::register_policy(
+        events,
+        [predicate, actions, data](apex_context const& context)->int{
 
-        ScalarVars probe_svars;        
-        MapVars probe_mvars;
+            apex::message_event_data event_data = *reinterpret_cast<apex::message_event_data*>(context.data);
 
-        fill_message_variables(event_data, context.event_type, probe_svars);
+            ScalarVars probe_svars;        
+            MapVars probe_mvars;
 
-        if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars, data)){
-            parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+            fill_message_variables(event_data, context.event_type, probe_svars);
+
+            if(predicate == "" || parse_predicate(predicate.begin(), predicate.end(), probe_svars, data)){
+                parse_actions(actions.begin(), actions.end(), probe_svars, probe_mvars, data);
+            }
+
+            return APEX_NOERROR;
         }
-
-        return APEX_NOERROR;
-    });
-    
+    );
+    for(auto pl : pls){
+        apex_policies.push_back(pl);
+    }
 }
 
 HPX_DEFINE_PLAIN_ACTION(register_message_probe, register_message_probe_action); 
@@ -761,10 +768,13 @@ void register_command_line_options(hpx::program_options::options_description& de
 
 //destruct interval_timers
 void finalize(){
+    std::cout << "HpxTrace finalized\n";
     for (auto  element : interval_timers) {
-        std::cout << "finalize\n";
         element->~interval_timer();
     }
-}
+        for (auto policy : apex_policies) {
+            apex::deregister_policy(policy);
+    }
 }
 
+}

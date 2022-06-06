@@ -46,9 +46,9 @@ class ScalarVarsServer : public hpx::components::locking_hook< hpx::components::
 
 
 //Declare the necessary component action boilerplate code
-HPX_REGISTER_ACTION_DECLARATION(ScalarVarsServer::store_double_action, ScalarVarsServer_store_double_action);
-HPX_REGISTER_ACTION_DECLARATION(ScalarVarsServer::get_double_action, ScalarVarsServer_get_double_action)
-HPX_REGISTER_ACTION_DECLARATION(ScalarVarsServer::store_string_action, ScalarVarsServer_store_string_action);
-HPX_REGISTER_ACTION_DECLARATION(ScalarVarsServer::get_string_action, ScalarVarsServer_get_string_action)
+HPX_REGISTER_ACTION_DECLARATION(ScalarVarsServer::store_double_action, HpxTrace_ScalarVarsServer_store_double_action);
+HPX_REGISTER_ACTION_DECLARATION(ScalarVarsServer::get_double_action, HpxTrace_ScalarVarsServer_get_double_action)
+HPX_REGISTER_ACTION_DECLARATION(ScalarVarsServer::store_string_action, HpxTrace_ScalarVarsServer_store_string_action);
+HPX_REGISTER_ACTION_DECLARATION(ScalarVarsServer::get_string_action, HpxTrace_ScalarVarsServer_get_string_action)
 
 #endif
