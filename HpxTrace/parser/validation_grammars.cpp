@@ -179,7 +179,7 @@ struct predicate_validation_grammar : qi::grammar<Iterator, ascii::space_type>
 
 
 template <typename Iterator>
-bool ffp(Iterator first, Iterator last)
+bool validate_predicate(Iterator first, Iterator last)
 {
 
   predicate_validation_grammar<std::string::iterator> g;
@@ -215,16 +215,10 @@ struct actions_validation_grammar : qi::grammar<Iterator, ascii::space_type>
     actions_validation_grammar(ScriptData sd) : actions_validation_grammar::base_type{actions}
     {
         data = sd;
-        Rule var = bg.var;
-        map = vg.map;
-        Rule keys = vg.keys;
-        Rule arithmetic_expression = vg.arithmetic_expression;
-        Rule string_expression = vg.string_expression;
-        aggregation = bg.var;
+
         assignment = ((vg.map | bg.var) >> '=' >>
                      (vg.arithmetic_expression | vg.string_expression));
 
-        string_content = bg.string_content;//+(char_ - '"');
 
 
 
@@ -259,7 +253,7 @@ struct actions_validation_grammar : qi::grammar<Iterator, ascii::space_type>
         localities = int_ % ',';
 
         print = ("print(" >> vg.arithmetic_expression >> ')')
-           | ("print(" >> string_expression >> ')')
+           | ("print(" >> vg.string_expression >> ')')
            | (lit("print(") >> '@' >> bg.var >> ')')
            | (lit("global_print(") >> '@' >> bg.var >> ')')
            | (lit("global_print(") >> '@' >> bg.var >> ',' >> localities >> ')');
@@ -279,7 +273,6 @@ struct actions_validation_grammar : qi::grammar<Iterator, ascii::space_type>
     }
     ScriptData data;
     Rule map;
-    Rule x, string_content;
     base_grammar<Iterator> bg;
     validation_grammar<Iterator> vg;
 
@@ -289,7 +282,7 @@ struct actions_validation_grammar : qi::grammar<Iterator, ascii::space_type>
 
 
 template <typename Iterator>
-bool fff(Iterator first, Iterator last, ScriptData data)
+bool validate_actions(Iterator first, Iterator last, ScriptData data)
 {
 
   static actions_validation_grammar<std::string::iterator> g(data);

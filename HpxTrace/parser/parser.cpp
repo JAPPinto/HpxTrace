@@ -84,9 +84,9 @@ bool validate_actions(Iterator first, Iterator last, ScriptData data) {
     RuleSt string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
 
-    RuleSt probe_var = (char_("&") >> *char_("a-zA-Z0-9_"));
-    RuleSt local_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
-    RuleSt global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
+    RuleSt probe_var = qi::lexeme[(char_("&") >> *char_("a-zA-Z0-9_"))];
+    RuleSt local_var = qi::lexeme[(char_(":") >> *char_("a-zA-Z0-9_"))];
+    RuleSt global_var = qi::lexeme[(char_("#") >> *char_("a-zA-Z0-9_"))];
     RuleSt var = probe_var | local_var | global_var;
 
     Rule value;
@@ -138,24 +138,26 @@ bool validate_actions(Iterator first, Iterator last, ScriptData data) {
           | string_expression;
 
 
-    Rule assignment = ((map | var) >> '=' >> arithmetic_expression)
-                | ((map | var) >> '=' >> string_expression);  
+    Rule assignment = (map | var) >> '=' >> (string_expression | arithmetic_expression);
 
 
 
 
     
     Rule str = ("str(" >> arithmetic_expression >> ')');
-    string_function = str;
+    Rule locality = lit("locality()");
+
+    string_function = str | locality;
 
     Rule dbl = ("dbl(" >> string_expression >> ')');
 
     RuleN round = ("round(" >> arithmetic_expression >> ')');
     RuleN ceil = ("ceil(" >> arithmetic_expression >> ')');
     RuleN floor = ("floor(" >> arithmetic_expression >> ')');
+    Rule timestamp = lit("timestamp()");
 
 
-    double_function = dbl | round | ceil | floor;
+    double_function = dbl | round | ceil | floor | timestamp;
 
 
 
@@ -282,7 +284,7 @@ bool parse_actions(Iterator first, Iterator last,
     RuleSt string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
     RuleSt probe_var = (char_("&") >> *char_("a-zA-Z0-9_"));
-    RuleSt local_var = (*char_("a-zA-Z0-9_"));
+    RuleSt local_var = (char_(":") >> *char_("a-zA-Z0-9_"));
     RuleSt global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
 
     RuleSt var = probe_var | local_var | global_var;
@@ -301,7 +303,7 @@ bool parse_actions(Iterator first, Iterator last,
         (global_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.global_scalar_vars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
 
-    RuleSt locality = lit("locality")[_val = phx::ref(data.locality_name)];
+    //RuleSt locality = lit("locality")[_val = phx::ref(data.locality_name)];
 
     RuleSt string_var = probe_stvar | local_stvar | global_stvar;
 
@@ -320,7 +322,7 @@ bool parse_actions(Iterator first, Iterator last,
         (global_var [_pass = phx::bind(&get_comp_dvar, phx::ref(data.global_scalar_vars), _1, phx::ref(d))])
         [_val = phx::ref(d)];
 
-    RuleN timestamp = lit("timestamp")[_val =  phx::bind(&elapsed_time)];
+    //RuleN timestamp = lit("timestamp")[_val =  phx::bind(&elapsed_time)];
 
     RuleN double_var = probe_dvar | local_dvar | global_dvar;
 
@@ -365,8 +367,10 @@ bool parse_actions(Iterator first, Iterator last,
     RuleSt string_function;
     RuleN double_function;
     //Values rules
-    RuleSt string_value = string | string_function | locality | string_map | string_var;
-    RuleN double_value = double_ | double_function | timestamp| double_map | double_var;
+    //RuleSt string_value = string | string_function | locality | string_map | string_var;
+    RuleSt string_value = string | string_function | string_map | string_var;
+    RuleN double_value = double_ | double_function | double_map | double_var;
+    //RuleN double_value = double_ | double_function | timestamp| double_map | double_var;
 
     //Expression rules
 
@@ -455,16 +459,19 @@ bool parse_actions(Iterator first, Iterator last,
 
     
     RuleSt str = ("str(" >> arithmetic_expression >> ')')[_val = phx::bind(&to_string, _1)];
-    string_function = str;
+    RuleSt locality = lit("locality()")[_val = phx::ref(data.locality_name)];
+
+    string_function = str | locality;
 
     RuleN dbl = ("dbl(" >> string_expression >> ')')[_val = phx::bind(&to_double, _1)];
 
     RuleN round = ("round(" >> arithmetic_expression >> ')')[_val = phx::bind(&round_, _1)];
     RuleN ceil = ("ceil(" >> arithmetic_expression >> ')')[_val = phx::bind(&ceil_, _1)];
     RuleN floor = ("floor(" >> arithmetic_expression >> ')')[_val = phx::bind(&floor_, _1)];
+    RuleN timestamp = lit("timestamp()")[_val =  phx::bind(&elapsed_time)];
 
 
-    double_function = dbl | round | ceil | floor;
+    double_function = dbl | round | ceil | floor | timestamp;
 
 
         //if lit is not used, compiler tries to do binary OR
@@ -490,7 +497,8 @@ bool parse_actions(Iterator first, Iterator last,
     qi::rule<Iterator, ascii::space_type,std::vector<int>> localities = int_ % ',';
 
 
-    Rule print = ("print(" >> value >> ')')[phx::bind(&print_value, _1)]
+    Rule print = ("print(" >> value >> ')')[phx::bind(&print_value, _1, phx::ref(data.locality_name))]
+               | ("prints(" >> string_expression >> ')')[phx::bind(&print_value, _1, phx::ref(data.locality_name))]
                | (lit("print(") >> '@' >> var >> ')')
                  [phx::bind(&print_aggregation, phx::ref(data.local_aggregation), _1)]
                | (lit("global_print(") >> '@' >> var >> ')')
@@ -514,10 +522,9 @@ bool parse_actions(Iterator first, Iterator last,
 
     Rule locks = lock | unlock | global_lock | global_unlock;
 
-    Rule action = assignment | print | aggregation | locks;
+    Rule action = print | aggregation | locks | assignment;
 
     Rule actions = action >> ';' >> *(action >> ';');
-
 
 
     bool r = phrase_parse(
@@ -575,7 +582,7 @@ bool validate_predicate(Iterator first, Iterator last) {
     RuleSt string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
     RuleSt probe_var = (char_("&") >> *char_("a-zA-Z0-9_"));
-    RuleSt local_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
+    RuleSt local_var = (char_(":") >> *char_("a-zA-Z0-9_"));
     RuleSt global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
 
     RuleSt var = probe_var | local_var | global_var;
@@ -629,6 +636,7 @@ bool validate_predicate(Iterator first, Iterator last) {
 
     comparison = (string_expression >> "==" >> string_expression)
                | (string_expression >> "!=" >> string_expression)
+               | (string_expression >> "in" >> string_expression)
                | (arithmetic_expression >> "==" >> arithmetic_expression)
                | (arithmetic_expression >> "!=" >> arithmetic_expression)
                | (arithmetic_expression >> "<"  >> arithmetic_expression)
@@ -669,8 +677,10 @@ bool validate_predicate(Iterator first, Iterator last) {
 
     return result;
 }
-
-
+//a exists in b
+bool contains(std::string a, std::string b){
+    return b.find(a) != std::string::npos;
+}
 
 
 template <typename Iterator>
@@ -682,6 +692,7 @@ bool parse_predicate(Iterator first, Iterator last,
     using qi::_1;
     using qi::_2;
     using qi::_3; 
+    using qi::_a; 
     using qi::_val;
     using qi::_pass;
     using qi::phrase_parse;
@@ -699,7 +710,7 @@ bool parse_predicate(Iterator first, Iterator last,
     RuleSt string = qi::lexeme[('"' >> string_content >> '"')][_val = _1];
     //Var rules
     RuleSt probe_var = (char_("&") >> *char_("a-zA-Z0-9_"));
-    RuleSt local_var = (char_("a-zA-Z") >> *char_("a-zA-Z0-9_"));
+    RuleSt local_var = (char_(":") >> *char_("a-zA-Z0-9_"));
     RuleSt global_var = (char_("#") >> *char_("a-zA-Z0-9_"));
 
     RuleSt var = probe_var | local_var | global_var;
@@ -707,17 +718,21 @@ bool parse_predicate(Iterator first, Iterator last,
 
     std::string s = "--";
 
-    RuleSt probe_stvar = 
+    /*RuleSt probe_stvar = 
         (probe_var [_pass = phx::bind(&get_probe_stvar, phx::ref(probe_svars), _1, phx::ref(s))])
-        [_val = phx::ref(s)];
+        [_val = phx::ref(s)];*/
 
+    RuleSt probe_stvar = 
+        probe_var [_pass = phx::bind(&get_probe_stvar, phx::ref(probe_svars), _1, _val)];
+
+    //RuleSt local_stvar = 
+    //    local_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.local_scalar_vars), _1, _val)];;
     RuleSt local_stvar = 
         (local_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.local_scalar_vars), _1, phx::ref(s))])
         [_val = phx::ref(s)];
-
+        
     RuleSt global_stvar = 
-        (global_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.global_scalar_vars), _1, phx::ref(s))])
-        [_val = phx::ref(s)];
+        global_var [_pass = phx::bind(&get_comp_stvar, phx::ref(data.global_scalar_vars), _1, phx::ref(s))];
 
 
     RuleSt string_var = probe_stvar | local_stvar | global_stvar;
@@ -791,6 +806,7 @@ bool parse_predicate(Iterator first, Iterator last,
 
     comparison = (string_expression >> "==" >> string_expression)[_val = _1 == _2]
                | (string_expression >> "!=" >> string_expression)[_val = _1 != _2]
+               | (string_expression >> "in" >> string_expression)[_val = phx::bind(&contains, _1, _2)]
                | (arithmetic_expression >> "==" >> arithmetic_expression)[_val = _1 == _2]
                | (arithmetic_expression >> "!=" >> arithmetic_expression)[_val = _1 != _2]
                | (arithmetic_expression >> "<"  >> arithmetic_expression)[_val = _1 <  _2]

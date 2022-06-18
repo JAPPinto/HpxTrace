@@ -146,10 +146,20 @@ void comp_unlock(hpx::naming::id_type id, VariantList key){
     MutexesServer::unlock_action()(id, key);
 }
 
+const std::string red("\033[0;31m");
+const std::string green("\033[1;32m");
+const std::string yellow("\033[1;33m");
+const std::string cyan("\033[0;36m");
+const std::string magenta("\033[0;35m");
+const std::string reset("\033[0m");
 
-void print_value(Variant v){
+void print_value(Variant v, std::string locality_name){
     std::stringstream msg;
-    msg << "API PRINT: " << v << std::endl;
+    if(locality_name.find("#") != std::string::npos)
+        msg << green  << v << reset << std::endl;
+    else
+        msg << v << std::endl;
+
     std::cout << msg.str();
 }
 
@@ -205,6 +215,8 @@ void validate_lquantization(
         res = AggregationsServer::new_lquantize_action()(id, name, lower_bound, upper_bound, step);
     }
 
+    if(res.function == "") return;
+
     if(res.function != "lquantize"){
         std::string error = "aggregation redefined";
         error += " current: @" + name + " = " + "lquantize" + "() \n";
@@ -227,7 +239,7 @@ void validate_lquantization(
 
 int elapsed_time(){
     std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-    return std::chrono::duration_cast<std::chrono::nanoseconds> (now - start_time).count();
+    return std::chrono::duration_cast<std::chrono::milliseconds> (now - start_time).count();
 }
 
 double round_(double d){return std::round(d);}
